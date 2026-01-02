@@ -1,7 +1,6 @@
 package api
 
 import (
-	"ai-ops/internal/agent"
 	"ai-ops/internal/api/handler"
 	"ai-ops/internal/api/middleware"
 	"ai-ops/internal/auth"
@@ -12,29 +11,25 @@ import (
 	"ai-ops/internal/security"
 	"ai-ops/internal/service"
 	"ai-ops/internal/ssh"
-	"ai-ops/internal/tool"
 
 	"github.com/gin-gonic/gin"
 )
 
 // RouterConfig 路由配置
 type RouterConfig struct {
-	Agent          *agent.Agent
-	ToolRegistry   *tool.Registry
-	SSHPool        *ssh.Pool
-	PolicyStore    *security.PolicyStore
-	AuditLogger    *security.AuditLogger
-	HostRepo       repository.HostRepository
-	SessionRepo    repository.SessionRepository
-	GroupRepo      repository.GroupRepository
-	ConfigRepo     repository.ConfigRepository
-	AnalysisRepo   repository.AnalysisRepository
-	LLMClient      *llm.OpenAIClient
-	Cache          cache.Cache // 可选的缓存
-	Version        string
-	Mode           string // debug / release
-	EnableThinking bool   // 是否启用思考过程
-	Config         *config.Config
+	SSHPool      *ssh.Pool
+	PolicyStore  *security.PolicyStore
+	AuditLogger  *security.AuditLogger
+	HostRepo     repository.HostRepository
+	SessionRepo  repository.SessionRepository
+	GroupRepo    repository.GroupRepository
+	ConfigRepo   repository.ConfigRepository
+	AnalysisRepo repository.AnalysisRepository
+	LLMClient    *llm.OpenAIClient
+	Cache        cache.Cache // 可选的缓存
+	Version      string
+	Mode         string // debug / release
+	Config       *config.Config
 }
 
 // NewRouter 创建路由
@@ -68,16 +63,15 @@ func NewRouter(cfg RouterConfig) *gin.Engine {
 	}
 
 	// 创建 Service 层
-	chatService := service.NewChatService(cfg.Agent, cfg.SessionRepo, cfg.EnableThinking)
+	chatService := service.NewChatService(cfg.Config.Agent.ServiceURL, cfg.SessionRepo)
 	hostService := service.NewHostService(cfg.SSHPool, cfg.HostRepo, cfg.GroupRepo, cfg.Cache)
 
 	// 创建 handlers
 	chatHandler := handler.NewChatHandler(chatService)
 	hostHandler := handler.NewHostHandler(hostService)
-	toolHandler := handler.NewToolHandler(cfg.ToolRegistry, cfg.SSHPool, cfg.ConfigRepo)
 	systemHandler := handler.NewSystemHandler(cfg.Version, cfg.PolicyStore, cfg.AuditLogger, cfg.ConfigRepo)
-	operationsHandler := handler.NewOperationsHandler(cfg.ToolRegistry, cfg.SSHPool)
 	analysisHandler := handler.NewAnalysisHandler(cfg.LLMClient, cfg.AnalysisRepo)
+	internalSSHHandler := handler.NewInternalSSHHandler(cfg.SSHPool, cfg.HostRepo)
 
 	// API 路由组
 	api := r.Group("/api")
@@ -139,17 +133,6 @@ func NewRouter(cfg RouterConfig) *gin.Engine {
 				groups.DELETE("/:name", hostHandler.DeleteGroup)
 			}
 
-			// 工具 API
-			tools := protected.Group("/tools")
-			{
-				tools.GET("", toolHandler.ListTools)
-				tools.GET("/builtin", toolHandler.ListBuiltinTools)
-				tools.GET("/script", toolHandler.ListScriptTools)
-				tools.GET("/:name", toolHandler.GetTool)
-				tools.PUT("/:name/toggle", toolHandler.ToggleTool)
-				tools.POST("/:name/execute", toolHandler.ExecuteTool)
-			}
-
 			// 系统 API
 			system := protected.Group("/system")
 			{
@@ -161,12 +144,6 @@ func NewRouter(cfg RouterConfig) *gin.Engine {
 				system.GET("/audit/commands", systemHandler.GetCommandAudit)
 			}
 
-			// 批量操作 API
-			operations := protected.Group("/operations")
-			{
-				operations.POST("/batch-execute", operationsHandler.BatchExecute)
-			}
-
 			// AI分析 API
 			analysis := protected.Group("/analysis")
 			{
@@ -175,6 +152,12 @@ func NewRouter(cfg RouterConfig) *gin.Engine {
 				analysis.GET("/:id", analysisHandler.GetAnalysis)
 				analysis.DELETE("/:id", analysisHandler.DeleteAnalysis)
 			}
+		}
+
+		// 内部服务接口（仅供 Node.js Agent Service 调用）
+		internal := api.Group("/internal")
+		{
+			internal.GET("/hosts/:ip/credentials", internalSSHHandler.GetHostCredentials)
 		}
 	}
 

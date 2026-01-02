@@ -1,31 +1,29 @@
 # AI-Ops Docker Compose 配置
-# 用于快速部署和开发
+# 集成 Claude Agent SDK 架构
 
 services:
-  ai-pro:
+  # Go Backend
+  backend:
     build:
       context: .
       dockerfile: Dockerfile
     image: ai-pro:latest
-    container_name: ai-pro
+    container_name: ai-pro-backend
     restart: unless-stopped
     ports:
       - "8080:8080"
     volumes:
-      # 挂载数据目录（持久化）
       - ./data:/app/data
-      # 挂载配置文件（可选，用于自定义配置）
       - ./config.yaml:/app/config.yaml:ro
-      # 挂载脚本目录（可选）
       - ./scripts:/app/scripts:ro
     environment:
-      # 时区设置
       - TZ=Asia/Shanghai
-      # API 配置
-      - API_HOST=0.0.0.0
-      - API_PORT=8080
-      # 数据库配置
-      - DB_PATH=/app/data/aiops.db
+      - SERVER_ADDR=:8080
+      - SERVER_MODE=release
+      - DATABASE_DSN=/app/data/aiops.db
+      - AGENT_SERVICE_URL=http://agent-service:3001
+    depends_on:
+      - agent-service
     networks:
       - ai-pro-network
     healthcheck:
@@ -35,21 +33,55 @@ services:
       retries: 3
       start_period: 10s
 
-  # 可选：Nginx 反向代理
-  # nginx:
-  #   image: nginx:alpine
-  #   container_name: ai-pro-nginx
-  #   restart: unless-stopped
-  #   ports:
-  #     - "80:80"
-  #     - "443:443"
-  #   volumes:
-  #     - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
-  #     - ./nginx/ssl:/etc/nginx/ssl:ro
-  #   depends_on:
-  #     - ai-pro
-  #   networks:
-  #     - ai-pro-network
+  # Node.js Agent Service (Claude SDK)
+  agent-service:
+    build:
+      context: ./agent-service
+      dockerfile: Dockerfile
+    container_name: ai-pro-agent
+    restart: unless-stopped
+    ports:
+      - "3001:3001"
+    environment:
+      - TZ=Asia/Shanghai
+      - PORT=3001
+      - ANTHROPIC_BASE_URL=${ANTHROPIC_BASE_URL}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - LLM_MODEL=${LLM_MODEL:-claude-sonnet-4-20250514}
+      - MCP_SERVER_URL=http://mcp-server:3002
+      - GO_BACKEND_URL=http://backend:8080
+    depends_on:
+      - mcp-server
+    networks:
+      - ai-pro-network
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  # MCP Server (Tools)
+  mcp-server:
+    build:
+      context: ./mcp-server
+      dockerfile: Dockerfile
+    container_name: ai-pro-mcp
+    restart: unless-stopped
+    ports:
+      - "3002:3002"
+    environment:
+      - TZ=Asia/Shanghai
+      - PORT=3002
+      - GO_BACKEND_URL=http://backend:8080
+    networks:
+      - ai-pro-network
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3002/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
 
 networks:
   ai-pro-network:

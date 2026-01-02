@@ -16,6 +16,31 @@
           <div v-if="message.role === 'assistant'" class="markdown-body" v-html="renderedContent"></div>
           <div v-else class="plain-text">{{ message.content }}</div>
 
+          <!-- 错误卡片 -->
+          <ErrorCard
+            v-if="message.error"
+            :error-message="message.error.message"
+            :stack-trace="message.error.stack"
+            @diagnose="handleDiagnose"
+            @view-logs="handleViewLogs"
+          />
+
+          <!-- AI 建议步骤 -->
+          <ActionCards
+            v-if="message.suggestedActions && message.suggestedActions.length > 0"
+            ref="actionCardsRef"
+            :steps="message.suggestedActions"
+            @execute="handleExecuteAction"
+          />
+
+          <!-- 命令执行结果 -->
+          <CollapsibleOutput
+            v-if="message.commandOutput"
+            :output="message.commandOutput.content"
+            :exit-code="message.commandOutput.exitCode"
+            :duration="message.commandOutput.duration"
+          />
+
           <!-- 工具调用展示 -->
           <div v-if="message.toolCalls && message.toolCalls.length > 0" class="tool-calls">
             <ToolCallCard
@@ -31,17 +56,42 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { marked } from 'marked'
 import hljs from 'highlight.js'
 import 'highlight.js/styles/github-dark.css'
 import type { Message } from '@/api/chat'
 import { Monitor, User } from '@element-plus/icons-vue'
 import ToolCallCard from './ToolCallCard.vue'
+import ErrorCard from './ErrorCard.vue'
+import CollapsibleOutput from './CollapsibleOutput.vue'
+import ActionCards from './ActionCards.vue'
 
 const props = defineProps<{
   message: Message
 }>()
+
+const emit = defineEmits<{
+  diagnose: [error: string]
+  viewLogs: []
+  executeAction: [command: string, index: number]
+}>()
+
+const actionCardsRef = ref()
+
+const handleDiagnose = () => {
+  if (props.message.error) {
+    emit('diagnose', props.message.error.message)
+  }
+}
+
+const handleViewLogs = () => {
+  emit('viewLogs')
+}
+
+const handleExecuteAction = (command: string, index: number) => {
+  emit('executeAction', command, index)
+}
 
 // 配置 marked
 marked.setOptions({

@@ -16,6 +16,7 @@ type HostRepository interface {
 	Delete(id string) error
 	GetByID(id string) (*model.Host, error)
 	GetByName(name string) (*model.Host, error)
+	GetByIP(ip string) (*model.Host, error)
 	List(filter HostFilter) ([]*model.Host, error)
 	UpdateStatus(id string, status string) error
 }
@@ -90,6 +91,20 @@ func (r *hostRepository) GetByID(id string) (*model.Host, error) {
 func (r *hostRepository) GetByName(name string) (*model.Host, error) {
 	var host model.Host
 	err := r.db.Where("name = ?", name).First(&host).Error
+	if err != nil {
+		return nil, err
+	}
+	// 读取后解密敏感数据
+	if err := r.decryptAfterLoad(&host); err != nil {
+		return nil, err
+	}
+	return &host, nil
+}
+
+// GetByIP 根据IP获取主机
+func (r *hostRepository) GetByIP(ip string) (*model.Host, error) {
+	var host model.Host
+	err := r.db.Where("ip = ?", ip).First(&host).Error
 	if err != nil {
 		return nil, err
 	}

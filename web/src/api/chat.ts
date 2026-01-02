@@ -27,6 +27,7 @@ export interface ChatRequest {
   message: string
   sessionId?: string
   hostIds?: string[]
+  history?: { role: 'user' | 'assistant'; content: string }[]
 }
 
 export interface ChatResponse {

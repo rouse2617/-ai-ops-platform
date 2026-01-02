@@ -18,18 +18,21 @@ go.work
 # IDE
 .idea/
 .vscode/
+.cursor/
+.claude/
+.kiro/
 *.swp
 *.swo
 
 # OS
 .DS_Store
 Thumbs.db
+nul
 
 # Data
-data/*.db
-data/*.sqlite
-data/command_policy.json
-data/command_audit.jsonl
+data/
+*.db
+*.sqlite
 
 # Logs
 *.log
@@ -38,12 +41,22 @@ logs/
 # Environment
 .env
 .env.local
+config.yaml
 
 # Build
 dist/
 web/dist/
+node_modules/
 web/node_modules/
+agent-service/node_modules/
+mcp-server/node_modules/
+mcp-server/dist/
+agent-service/dist/
 
 # Temporary
 tmp/
 temp/
+
+# Backup files
+*.bak
+*.bak2

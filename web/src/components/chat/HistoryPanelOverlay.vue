@@ -52,7 +52,10 @@
         >
           <div class="session-info">
             <el-icon class="session-icon"><ChatDotRound /></el-icon>
-            <span class="session-title">{{ session.title || '未命名对话' }}</span>
+            <div class="session-content">
+              <span class="session-title">{{ session.title || '未命名对话' }}</span>
+              <SessionHealthBadge :session-id="session.id" />
+            </div>
           </div>
           <el-icon
             class="session-delete"
@@ -87,6 +90,7 @@
 
 import { ref } from 'vue'
 import { ChatDotRound, Close, Plus, Delete } from '@element-plus/icons-vue'
+import SessionHealthBadge from '@/components/common/SessionHealthBadge.vue'
 // import type { HistoryPanelOverlayProps } from '@/types/chat-ui'
 
 // ============================================================================
@@ -382,6 +386,14 @@ function handleTouchEnd(event: TouchEvent): void {
 .history-panel-overlay .session-icon {
   flex-shrink: 0;
   opacity: 0.8;
+}
+
+.history-panel-overlay .session-content {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+  min-width: 0;
 }
 
 .history-panel-overlay .session-title {

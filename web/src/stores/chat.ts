@@ -3,6 +3,7 @@ import { ref } from 'vue'
 import { ElNotification } from 'element-plus'
 import type { Message, ToolCall, ThinkingStatus, StreamEventType } from '@/api/chat'
 import { fetchStreamChat, getChatHistory, getSessions, createSession, deleteSession } from '@/api/chat'
+import { useSystemStore } from './system'
 
 export interface ChatSession {
   id: string
@@ -127,6 +128,18 @@ export const useChatStore = defineStore('chat', () => {
 
   // 会话切换锁 - 防止切换时发送消息
   let isSwitchingSession = false
+
+  // 获取系统 store
+  const systemStore = useSystemStore()
+
+  // 会话性能追踪
+  const sessionMetrics = ref<Map<string, {
+    responseTimes: number[]
+    errorCount: number
+    totalMessages: number
+    toolSuccessCount: number
+    toolTotalCount: number
+  }>>(new Map())
 
   // 加载会话列表
   async function loadSessions() {
@@ -273,12 +286,32 @@ export const useChatStore = defineStore('chat', () => {
     // 当前步骤的工具调用
     let currentStepToolCalls: ThinkingStep['toolCalls'] = []
 
+    // 初始化会话指标
+    if (!sessionMetrics.value.has(currentSessionId.value)) {
+      sessionMetrics.value.set(currentSessionId.value, {
+        responseTimes: [],
+        errorCount: 0,
+        totalMessages: 0,
+        toolSuccessCount: 0,
+        toolTotalCount: 0
+      })
+    }
+    const metrics = sessionMetrics.value.get(currentSessionId.value)!
+    const requestStartTime = Date.now()
+
+    // 构建历史记录（不包括刚添加的用户消息和空的助手消息）
+    const historyMessages = messages.value.slice(0, -2).map(msg => ({
+      role: msg.role as 'user' | 'assistant',
+      content: msg.content
+    }))
+
     try {
       await fetchStreamChat(
         {
           message: content,
           sessionId: currentSessionId.value,
-          hostIds: selectedHostIds.value
+          hostIds: selectedHostIds.value,
+          history: historyMessages.length > 0 ? historyMessages : undefined
         },
         (chunk: string, type: StreamEventType, rawData?: unknown) => {
           const lastMessage = messages.value[messages.value.length - 1]
@@ -333,6 +366,7 @@ export const useChatStore = defineStore('chat', () => {
                 }
                 lastMessage.toolCalls.push(toolCall)
                 currentToolCalls.value.push(toolCall)
+                metrics.toolTotalCount++
 
                 // 添加到当前步骤的工具调用
                 const currentStep = thinkingSteps.value[thinkingSteps.value.length - 1]
@@ -364,6 +398,9 @@ export const useChatStore = defineStore('chat', () => {
                     ? result.result
                     : JSON.stringify(result.result)
                   toolCall.status = result.error ? 'error' : 'success'
+                  if (toolCall.status === 'success') {
+                    metrics.toolSuccessCount++
+                  }
                 }
 
                 // 更新思考步骤中的工具调用状态（优先使用ID匹配）
@@ -387,12 +424,20 @@ export const useChatStore = defineStore('chat', () => {
             case 'done':
               isLoading.value = false
               currentThinkingStatus.value = null
+              // 更新会话指标
+              const responseTime = Date.now() - requestStartTime
+              metrics.responseTimes.push(responseTime)
+              metrics.totalMessages++
+              updateSessionHealth()
               break
 
             case 'error':
               lastMessage.content += '\n\n[错误] ' + chunk
               isLoading.value = false
               currentThinkingStatus.value = null
+              metrics.errorCount++
+              metrics.totalMessages++
+              updateSessionHealth()
               break
           }
         },
@@ -515,6 +560,37 @@ export const useChatStore = defineStore('chat', () => {
   // 切换推荐显示状态
   function toggleSuggestions(show?: boolean) {
     showSuggestions.value = show !== undefined ? show : !showSuggestions.value
+  }
+
+  // 更新会话健康状态
+  function updateSessionHealth() {
+    const metrics = sessionMetrics.value.get(currentSessionId.value)
+    if (!metrics || metrics.totalMessages === 0) return
+
+    const avgResponseTime = metrics.responseTimes.length > 0
+      ? metrics.responseTimes.reduce((a, b) => a + b, 0) / metrics.responseTimes.length
+      : 0
+
+    const score = systemStore.calculateSessionScore(currentSessionId.value, {
+      avgResponseTime,
+      errorCount: metrics.errorCount,
+      totalMessages: metrics.totalMessages,
+      toolSuccessCount: metrics.toolSuccessCount,
+      toolTotalCount: metrics.toolTotalCount
+    })
+
+    systemStore.updateSessionHealth({
+      sessionId: currentSessionId.value,
+      score,
+      metrics: {
+        responseTime: Math.round(avgResponseTime),
+        errorRate: metrics.errorCount / metrics.totalMessages,
+        toolSuccessRate: metrics.toolTotalCount > 0
+          ? metrics.toolSuccessCount / metrics.toolTotalCount
+          : 1
+      },
+      lastUpdated: Date.now()
+    })
   }
 
   return {

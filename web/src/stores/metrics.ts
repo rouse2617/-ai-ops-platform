@@ -6,10 +6,23 @@ import type { HostMetrics, MetricAlert } from '@/types/chat-ui'
 const REFRESH_INTERVAL = 60000 // 60 seconds
 const MAX_CONSECUTIVE_FAILURES = 3
 const MAX_HOSTS = 5
+const MAX_HISTORY_POINTS = 60
+
+interface MetricDataPoint {
+  timestamp: number
+  value: number
+}
+
+interface MetricHistory {
+  cpu: MetricDataPoint[]
+  memory: MetricDataPoint[]
+  disk: MetricDataPoint[]
+}
 
 export const useMetricsStore = defineStore('metrics', () => {
   // State
   const hosts = ref<Map<string, HostMetrics>>(new Map())
+  const metricsHistory = ref<Map<string, MetricHistory>>(new Map())
   const lastRefresh = ref(0)
   const isRefreshing = ref(false)
   const refreshError = ref<Error | null>(null)
@@ -55,6 +68,7 @@ export const useMetricsStore = defineStore('metrics', () => {
   function unsubscribe(hostId: string) {
     subscriptions.value.delete(hostId)
     hosts.value.delete(hostId)
+    metricsHistory.value.delete(hostId)
     abnormalHosts.value.delete(hostId)
     if (subscriptions.value.size === 0) {
       stopAutoRefresh()
@@ -141,14 +155,45 @@ export const useMetricsStore = defineStore('metrics', () => {
         lastUpdated: Date.now()
       }))
 
-      // Update hosts map
+      // Update hosts map and history
       mockMetrics.forEach(metric => {
         hosts.value.set(metric.hostId, metric)
+        updateMetricHistory(metric.hostId, metric)
         checkThresholds(metric)
       })
     } catch (error) {
       throw error
     }
+  }
+
+  function updateMetricHistory(hostId: string, metric: HostMetrics) {
+    if (!metricsHistory.value.has(hostId)) {
+      metricsHistory.value.set(hostId, {
+        cpu: [],
+        memory: [],
+        disk: []
+      })
+    }
+
+    const history = metricsHistory.value.get(hostId)!
+    const timestamp = metric.lastUpdated
+
+    // Add new data points
+    history.cpu.push({ timestamp, value: metric.cpu })
+    history.memory.push({ timestamp, value: metric.memory })
+    history.disk.push({ timestamp, value: metric.disk })
+
+    // Limit to MAX_HISTORY_POINTS
+    if (history.cpu.length > MAX_HISTORY_POINTS) {
+      history.cpu.shift()
+      history.memory.shift()
+      history.disk.shift()
+    }
+  }
+
+  function getMetricHistory(hostId: string, metric: 'cpu' | 'memory' | 'disk'): MetricDataPoint[] {
+    const history = metricsHistory.value.get(hostId)
+    return history ? history[metric] : []
   }
 
   function checkThresholds(host: HostMetrics) {
@@ -245,6 +290,7 @@ export const useMetricsStore = defineStore('metrics', () => {
 
   function removeHost(hostId: string) {
     hosts.value.delete(hostId)
+    metricsHistory.value.delete(hostId)
     abnormalHosts.value.delete(hostId)
     subscriptions.value.delete(hostId)
 
@@ -257,6 +303,7 @@ export const useMetricsStore = defineStore('metrics', () => {
   function reset() {
     stopAutoRefresh()
     hosts.value.clear()
+    metricsHistory.value.clear()
     abnormalHosts.value.clear()
     subscriptions.value.clear()
     alertHistory.value = []
@@ -269,6 +316,7 @@ export const useMetricsStore = defineStore('metrics', () => {
   return {
     // State
     hosts,
+    metricsHistory,
     lastRefresh,
     isRefreshing,
     refreshError,
@@ -290,6 +338,7 @@ export const useMetricsStore = defineStore('metrics', () => {
     stopAutoRefresh,
     refreshMetrics,
     fetchMetrics,
+    getMetricHistory,
     acknowledgeAlert,
     acknowledgeAllAlerts,
     clearAlertHistory,

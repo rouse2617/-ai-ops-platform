@@ -22,9 +22,9 @@ type Agent struct {
 	timeout          time.Duration
 	promptVersion    string // 提示词版本: standard / enhanced
 	errorRecovery    *ErrorRecoveryEngine
-	reactAgent       *ReActAgent          // ReAct Agent 实例
-	parallelExecutor *ParallelExecutor    // 并行执行器
-	toolCache        *ToolCache           // 工具缓存
+	reactAgent       *ReActAgent       // ReAct Agent 实例
+	parallelExecutor *ParallelExecutor // 并行执行器
+	toolCache        *ToolCache        // 工具缓存
 }
 
 // Config Agent 配置
@@ -426,8 +426,6 @@ func (a *Agent) ChatWithReAct(ctx context.Context, req ChatRequest) (*ChatRespon
 	}
 	return a.reactAgent.ChatReAct(ctx, req)
 }
-
-
 
 // ClearCache 清空工具缓存
 func (a *Agent) ClearCache() {

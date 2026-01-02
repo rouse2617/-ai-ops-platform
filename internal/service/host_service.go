@@ -73,6 +73,8 @@ type HostResponse struct {
 	AuthType    string   `json:"authType"`
 	Description string   `json:"description"`
 	Status      string   `json:"status"`
+	Password    string   `json:"password,omitempty"`
+	PrivateKey  string   `json:"privateKey,omitempty"`
 }
 
 // ListHosts 获取主机列表（带缓存）
@@ -672,16 +674,18 @@ func (s *HostService) convertToResponses(dbHosts []*model.Host) []*HostResponse 
 	hosts := make([]*HostResponse, 0, len(dbHosts))
 	for _, dbHost := range dbHosts {
 		hosts = append(hosts, &HostResponse{
-			ID:       dbHost.ID,
-			Name:     dbHost.Name,
-			Host:     dbHost.IP,
-			Port:     dbHost.Port,
-			User:     dbHost.User,
-			Username: dbHost.User,
-			Group:    dbHost.Group,
-			Tags:     dbHost.Tags,
-			AuthType: dbHost.AuthType,
-			Status:   dbHost.Status,
+			ID:         dbHost.ID,
+			Name:       dbHost.Name,
+			Host:       dbHost.IP,
+			Port:       dbHost.Port,
+			User:       dbHost.User,
+			Username:   dbHost.User,
+			Group:      dbHost.Group,
+			Tags:       dbHost.Tags,
+			AuthType:   dbHost.AuthType,
+			Status:     dbHost.Status,
+			Password:   dbHost.Password,
+			PrivateKey: dbHost.KeyContent,
 		})
 	}
 	return hosts

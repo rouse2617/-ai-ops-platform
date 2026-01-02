@@ -45,3 +45,6 @@ export function getAnalysis(id: string): Promise<Analysis> {
 export function deleteAnalysis(id: string): Promise<void> {
   return request.delete(`/analysis/${id}`)
 }
+
+
+

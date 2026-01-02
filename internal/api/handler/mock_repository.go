@@ -121,6 +121,15 @@ func (m *mockHostRepository) GetByName(name string) (*model.Host, error) {
 	return nil, gorm.ErrRecordNotFound
 }
 
+func (m *mockHostRepository) GetByIP(ip string) (*model.Host, error) {
+	for _, host := range m.hosts {
+		if host.IP == ip {
+			return host, nil
+		}
+	}
+	return nil, gorm.ErrRecordNotFound
+}
+
 func (m *mockHostRepository) List(filter repository.HostFilter) ([]*model.Host, error) {
 	hosts := make([]*model.Host, 0, len(m.hosts))
 	for _, host := range m.hosts {

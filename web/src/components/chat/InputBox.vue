@@ -137,6 +137,9 @@
         <el-tag size="small" type="info" effect="plain">
           @ 主机
         </el-tag>
+        <el-tag size="small" type="info" effect="plain">
+          ↑↓ 历史
+        </el-tag>
       </div>
       <span class="hint-text">您可以询问服务器状态、执行命令、查看日志等运维相关问题</span>
     </div>
@@ -149,6 +152,7 @@ import { Promotion, Delete, TrendCharts, Document, CircleCheck, FolderOpened, Cp
 import { SLASH_COMMANDS, type SlashCommand } from '@/types/chat-ui'
 import { useHostStore } from '@/stores/host'
 import type { Host } from '@/api/host'
+import { useCommandHistory } from '@/composables/useCommandHistory'
 
 defineProps<{
   disabled: boolean
@@ -163,6 +167,7 @@ const emit = defineEmits<{
 const hostStore = useHostStore()
 const inputRef = ref<any>()
 const inputText = ref('')
+const { addCommand, getPrevious, getNext, resetIndex } = useCommandHistory()
 
 // Icon mapping for slash commands
 const iconMap: Record<string, any> = {
@@ -340,6 +345,25 @@ const handleKeydown = (e: KeyboardEvent) => {
     return
   }
 
+  // Handle command history navigation
+  if (e.key === 'ArrowUp' && !e.shiftKey) {
+    e.preventDefault()
+    const prev = getPrevious()
+    if (prev !== null) {
+      inputText.value = prev
+    }
+    return
+  }
+
+  if (e.key === 'ArrowDown' && !e.shiftKey) {
+    e.preventDefault()
+    const next = getNext()
+    if (next !== null) {
+      inputText.value = next
+    }
+    return
+  }
+
   // Handle send
   if (e.key === 'Enter' && !e.shiftKey) {
     e.preventDefault()
@@ -359,11 +383,15 @@ const handleSend = () => {
     message = `[目标主机: ${hostNames}]\n${message}`
   }
 
+  // Add to command history
+  addCommand(inputText.value.trim())
+
   emit('send', message)
 
   // Clear input and reset state
   inputText.value = ''
   mentionedHosts.value.clear()
+  resetIndex()
 }
 
 // Clear input function
@@ -372,6 +400,7 @@ function clearInput() {
   mentionedHosts.value.clear()
   showSlashMenu.value = false
   showHostMenu.value = false
+  resetIndex()
 }
 
 defineExpose({

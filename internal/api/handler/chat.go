@@ -20,17 +20,6 @@ func NewChatHandler(chatService *service.ChatService) *ChatHandler {
 	}
 }
 
-// SetEnableThinking 设置是否启用思考过程
-func (h *ChatHandler) SetEnableThinking(enable bool) {
-	h.chatService.SetEnableThinking(enable)
-}
-
-// SetEnableReAct 设置是否启用 ReAct 模式
-func (h *ChatHandler) SetEnableReAct(enable bool) {
-	h.chatService.SetEnableReAct(enable)
-}
-
-
 // ChatRequest 对话请求
 type ChatRequest struct {
 	SessionID  string   `json:"session_id"`
@@ -40,6 +29,10 @@ type ChatRequest struct {
 	HostIDs    []string `json:"hostIds"`
 	HostIDs2   []string `json:"host_ids"`
 	Stream     bool     `json:"stream"`
+	History    []struct {
+		Role    string `json:"role"`
+		Content string `json:"content"`
+	} `json:"history"`
 }
 
 // ChatResponseData 对话响应
@@ -99,6 +92,7 @@ func (h *ChatHandler) chatStream(c *gin.Context, req ChatRequest) {
 
 	hosts := h.normalizeHosts(req)
 	sessionID := h.normalizeSessionID(req)
+	history := h.normalizeHistory(req)
 
 	// 调用 Service 层流式接口
 	err := h.chatService.ChatStream(c.Request.Context(), service.ChatRequest{
@@ -106,6 +100,7 @@ func (h *ChatHandler) chatStream(c *gin.Context, req ChatRequest) {
 		Message:   req.Message,
 		Hosts:     hosts,
 		Stream:    true,
+		History:   history,
 	}, func(chunk service.StreamChunk) {
 		// 发送 SSE 事件
 		switch chunk.Type {
@@ -115,7 +110,7 @@ func (h *ChatHandler) chatStream(c *gin.Context, req ChatRequest) {
 				"status":  chunk.Status,
 				"content": chunk.Content,
 			})
-		case "content":
+		case "content", "text":
 			c.SSEvent("content", gin.H{"content": chunk.Content})
 		case "tool_call":
 			if chunk.ToolCall != nil {
@@ -282,4 +277,19 @@ func (h *ChatHandler) normalizeSessionID(req ChatRequest) string {
 		sessionID = req.SessionID2
 	}
 	return sessionID
+}
+
+// normalizeHistory 标准化历史记录
+func (h *ChatHandler) normalizeHistory(req ChatRequest) []service.ChatMessage {
+	if len(req.History) == 0 {
+		return nil
+	}
+	history := make([]service.ChatMessage, len(req.History))
+	for i, msg := range req.History {
+		history[i] = service.ChatMessage{
+			Role:    msg.Role,
+			Content: msg.Content,
+		}
+	}
+	return history
 }

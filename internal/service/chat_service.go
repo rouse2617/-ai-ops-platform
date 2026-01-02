@@ -1,13 +1,16 @@
 package service
 
 import (
+	"bufio"
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
 	"strings"
 	"time"
 
-	"ai-ops/internal/agent"
 	"ai-ops/internal/model"
 	"ai-ops/internal/repository"
 
@@ -17,31 +20,21 @@ import (
 
 // ChatService 聊天服务
 type ChatService struct {
-	agent          *agent.Agent
-	sessionRepo    repository.SessionRepository
-	enableThinking bool
-	enableReAct    bool // 是否启用 ReAct 模式
+	agentServiceURL string
+	sessionRepo     repository.SessionRepository
+	httpClient      *http.Client
 }
 
 // NewChatService 创建聊天服务
-func NewChatService(agent *agent.Agent, sessionRepo repository.SessionRepository, enableThinking bool) *ChatService {
+func NewChatService(agentServiceURL string, sessionRepo repository.SessionRepository) *ChatService {
 	return &ChatService{
-		agent:          agent,
-		sessionRepo:    sessionRepo,
-		enableThinking: enableThinking,
+		agentServiceURL: agentServiceURL,
+		sessionRepo:     sessionRepo,
+		httpClient: &http.Client{
+			Timeout: 5 * time.Minute,
+		},
 	}
 }
-
-// SetEnableThinking 设置是否启用思考过程
-func (s *ChatService) SetEnableThinking(enable bool) {
-	s.enableThinking = enable
-}
-
-// SetEnableReAct 设置是否启用 ReAct 模式
-func (s *ChatService) SetEnableReAct(enable bool) {
-	s.enableReAct = enable
-}
-
 
 // ChatRequest 聊天请求
 type ChatRequest struct {
@@ -49,6 +42,13 @@ type ChatRequest struct {
 	Message   string
 	Hosts     []string
 	Stream    bool
+	History   []ChatMessage
+}
+
+// ChatMessage 聊天消息
+type ChatMessage struct {
+	Role    string `json:"role"`
+	Content string `json:"content"`
 }
 
 // ChatResponse 聊天响应
@@ -59,103 +59,60 @@ type ChatResponse struct {
 	Thinking  string
 }
 
-// ToolCallRecord 工具调用记录（导出版本）
-type ToolCallRecord = agent.ToolCallRecord
+// ToolCallRecord 工具调用记录
+type ToolCallRecord struct {
+	ID     string                 `json:"id,omitempty"`
+	Tool   string                 `json:"tool"`
+	Params map[string]interface{} `json:"params"`
+	Result interface{}            `json:"result,omitempty"`
+	Error  string                 `json:"error,omitempty"`
+}
 
 // Chat 执行聊天
 func (s *ChatService) Chat(ctx context.Context, req ChatRequest) (*ChatResponse, error) {
-	// 标准化请求
 	req = s.normalizeRequest(req)
 
-	// 确保会话存在
 	if err := s.ensureSessionExists(req); err != nil {
 		return nil, fmt.Errorf("确保会话存在失败: %w", err)
 	}
 
-	// 保存用户消息
 	if err := s.saveUserMessage(req); err != nil {
 		return nil, fmt.Errorf("保存用户消息失败: %w", err)
 	}
 
-	// 调用 Agent
-	agentResp, err := s.callAgent(ctx, req)
+	agentResp, err := s.callAgentService(ctx, req)
 	if err != nil {
-		return nil, fmt.Errorf("调用 Agent 失败: %w", err)
+		return nil, fmt.Errorf("调用 Agent 服务失败: %w", err)
 	}
 
-	// 保存助手回复
 	if err := s.saveAssistantMessage(req, agentResp); err != nil {
 		return nil, fmt.Errorf("保存助手消息失败: %w", err)
 	}
 
-	// 更新会话标题
 	s.updateSessionTitleIfNeeded(req)
 
-	return &ChatResponse{
-		SessionID: agentResp.SessionID,
-		Reply:     agentResp.Reply,
-		ToolCalls: agentResp.ToolCalls,
-		Thinking:  agentResp.Thinking,
-	}, nil
+	return agentResp, nil
 }
 
 // ChatStream 流式聊天
 func (s *ChatService) ChatStream(ctx context.Context, req ChatRequest, callback func(chunk StreamChunk)) error {
-	// 标准化请求
 	req = s.normalizeRequest(req)
 
-	// 确保会话存在
 	if err := s.ensureSessionExists(req); err != nil {
 		return fmt.Errorf("确保会话存在失败: %w", err)
 	}
 
-	// 保存用户消息
-	userMsgID := uuid.New().String()
-	if err := s.saveUserMessageWithID(req, userMsgID); err != nil {
+	if err := s.saveUserMessage(req); err != nil {
 		return fmt.Errorf("保存用户消息失败: %w", err)
 	}
 
-	// 用于累积助手回复
 	var assistantContent strings.Builder
 	var toolCalls []model.ToolCall
 
-	// 流式处理回调
-	streamCallback := func(chunk agent.StreamChunk) {
+	streamCallback := func(chunk StreamChunk) {
 		switch chunk.Type {
-		case "thinking":
-			if s.enableThinking {
-				callback(StreamChunk{
-					Type:    "thinking",
-					Step:    chunk.Step,
-					Status:  chunk.Status,
-					Content: chunk.Content,
-				})
-			}
-		case "content":
+		case "content", "text":
 			assistantContent.WriteString(chunk.Content)
-			callback(StreamChunk{
-				Type:    "content",
-				Content: chunk.Content,
-			})
-		case "tool_call":
-			// 转换 agent.ToolCall 到 service.ToolCallRecord
-			if chunk.ToolCall != nil {
-				toolCallRecord := ToolCallRecord{
-					ID:     chunk.ToolCall.ID,
-					Tool:   chunk.ToolCall.Function.Name,
-					Params: make(map[string]interface{}),
-				}
-				// 解析 JSON 参数
-				if chunk.ToolCall.Function.Arguments != "" {
-					json.Unmarshal([]byte(chunk.ToolCall.Function.Arguments), &toolCallRecord.Params)
-				}
-
-				callback(StreamChunk{
-					Type:     "tool_call",
-					ToolCall: &toolCallRecord,
-					Status:   chunk.Status,
-				})
-			}
 		case "tool_result":
 			if chunk.ToolResult != nil {
 				toolCalls = append(toolCalls, model.ToolCall{
@@ -164,13 +121,8 @@ func (s *ChatService) ChatStream(ctx context.Context, req ChatRequest, callback 
 					Result: chunk.ToolResult.Result,
 					Error:  chunk.ToolResult.Error,
 				})
-				callback(StreamChunk{
-					Type:       "tool_result",
-					ToolResult: chunk.ToolResult,
-				})
 			}
 		case "done":
-			// 保存助手回复
 			if assistantContent.Len() > 0 {
 				assistantMsg := &model.Message{
 					ID:        uuid.New().String(),
@@ -181,54 +133,152 @@ func (s *ChatService) ChatStream(ctx context.Context, req ChatRequest, callback 
 					CreatedAt: time.Now(),
 				}
 				if err := s.sessionRepo.AddMessage(req.SessionID, assistantMsg); err != nil {
-					// 记录错误但不中断流
-					zap.Error(fmt.Errorf("保存助手消息失败: %w", err))
+					zap.L().Error("保存助手消息失败", zap.Error(err))
 				}
 			}
-			// 更新会话标题
 			s.updateSessionTitleIfNeeded(req)
-			callback(StreamChunk{Type: "done"})
-		case "error":
-			callback(StreamChunk{
-				Type:  "error",
-				Error: chunk.Error,
-			})
 		}
+		callback(chunk)
 	}
 
-	// 调用 Agent 流式接口
-	var err error
-	if s.enableThinking {
-		err = s.agent.ChatStreamWithThinking(ctx, agent.ChatRequest{
-			SessionID: req.SessionID,
-			Message:   req.Message,
-			Hosts:     req.Hosts,
-		}, streamCallback)
-	} else {
-		err = s.agent.ChatStream(ctx, agent.ChatRequest{
-			SessionID: req.SessionID,
-			Message:   req.Message,
-			Hosts:     req.Hosts,
-		}, streamCallback)
-	}
-
-	return err
+	return s.callAgentServiceStream(ctx, req, streamCallback)
 }
 
 // StreamChunk 流式数据块
 type StreamChunk struct {
-	Type       string         `json:"type"`
-	Content    string         `json:"content,omitempty"`
+	Type       string          `json:"type"`
+	Content    string          `json:"content,omitempty"`
 	ToolCall   *ToolCallRecord `json:"tool_call,omitempty"`
 	ToolResult *ToolCallRecord `json:"tool_result,omitempty"`
-	Error      string         `json:"error,omitempty"`
-	Step       int            `json:"step,omitempty"`
-	Status     string         `json:"status,omitempty"`
+	Error      string          `json:"error,omitempty"`
+	Step       int             `json:"step,omitempty"`
+	Status     string          `json:"status,omitempty"`
+}
+
+// callAgentService 调用 Node.js Agent Service
+func (s *ChatService) callAgentService(ctx context.Context, req ChatRequest) (*ChatResponse, error) {
+	reqBody := map[string]interface{}{
+		"sessionId": req.SessionID,
+		"message":   req.Message,
+		"hosts":     req.Hosts,
+	}
+	if len(req.History) > 0 {
+		reqBody["history"] = req.History
+	}
+
+	body, err := json.Marshal(reqBody)
+	if err != nil {
+		return nil, err
+	}
+
+	httpReq, err := http.NewRequestWithContext(ctx, "POST", s.agentServiceURL+"/chat", bytes.NewReader(body))
+	if err != nil {
+		return nil, err
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+
+	resp, err := s.httpClient.Do(httpReq)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("Agent 服务返回错误: %d - %s", resp.StatusCode, string(body))
+	}
+
+	var result struct {
+		SessionID string           `json:"sessionId"`
+		Reply     string           `json:"reply"`
+		Response  string           `json:"response"`
+		ToolCalls []ToolCallRecord `json:"toolCalls"`
+		Thinking  string           `json:"thinking"`
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, err
+	}
+
+	// 兼容 response 和 reply 两种字段名
+	reply := result.Reply
+	if reply == "" {
+		reply = result.Response
+	}
+
+	return &ChatResponse{
+		SessionID: result.SessionID,
+		Reply:     reply,
+		ToolCalls: result.ToolCalls,
+		Thinking:  result.Thinking,
+	}, nil
+}
+
+// callAgentServiceStream 调用 Node.js Agent Service 流式接口
+func (s *ChatService) callAgentServiceStream(ctx context.Context, req ChatRequest, callback func(chunk StreamChunk)) error {
+	reqBody := map[string]interface{}{
+		"sessionId": req.SessionID,
+		"message":   req.Message,
+		"hosts":     req.Hosts,
+		"stream":    true,
+	}
+	if len(req.History) > 0 {
+		reqBody["history"] = req.History
+	}
+
+	body, err := json.Marshal(reqBody)
+	if err != nil {
+		return err
+	}
+
+	httpReq, err := http.NewRequestWithContext(ctx, "POST", s.agentServiceURL+"/chat/stream", bytes.NewReader(body))
+	if err != nil {
+		return err
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set("Accept", "text/event-stream")
+
+	resp, err := s.httpClient.Do(httpReq)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("Agent 服务返回错误: %d - %s", resp.StatusCode, string(body))
+	}
+
+	reader := bufio.NewReader(resp.Body)
+	for {
+		line, err := reader.ReadBytes('\n')
+		if err != nil {
+			if err == io.EOF {
+				break
+			}
+			return err
+		}
+
+		line = bytes.TrimSpace(line)
+		if len(line) == 0 {
+			continue
+		}
+
+		if bytes.HasPrefix(line, []byte("data: ")) {
+			data := bytes.TrimPrefix(line, []byte("data: "))
+			var chunk StreamChunk
+			if err := json.Unmarshal(data, &chunk); err != nil {
+				continue
+			}
+			callback(chunk)
+		}
+	}
+
+	return nil
 }
 
 // normalizeRequest 标准化请求
 func (s *ChatService) normalizeRequest(req ChatRequest) ChatRequest {
-	// 去除消息前后空格
 	req.Message = strings.TrimSpace(req.Message)
 	return req
 }
@@ -241,10 +291,9 @@ func (s *ChatService) ensureSessionExists(req ChatRequest) error {
 
 	_, err := s.sessionRepo.GetByID(req.SessionID)
 	if err == nil {
-		return nil // 会话已存在
+		return nil
 	}
 
-	// 创建新会话
 	session := &model.Session{
 		ID:        req.SessionID,
 		Title:     s.generateSessionTitle(req.Message),
@@ -283,55 +332,12 @@ func (s *ChatService) saveUserMessage(req ChatRequest) error {
 	return s.sessionRepo.AddMessage(req.SessionID, userMsg)
 }
 
-// saveUserMessageWithID 保存用户消息（指定ID）
-func (s *ChatService) saveUserMessageWithID(req ChatRequest, msgID string) error {
-	if req.SessionID == "" {
-		return nil
-	}
-
-	userMsg := &model.Message{
-		ID:        msgID,
-		SessionID: req.SessionID,
-		Role:      model.RoleUser,
-		Content:   req.Message,
-		CreatedAt: time.Now(),
-	}
-	return s.sessionRepo.AddMessage(req.SessionID, userMsg)
-}
-
-// callAgent 调用 Agent
-func (s *ChatService) callAgent(ctx context.Context, req ChatRequest) (*agent.ChatResponse, error) {
-	// 优先级: ReAct > Thinking > 普通
-	if s.enableReAct {
-		return s.agent.ChatWithReAct(ctx, agent.ChatRequest{
-			SessionID: req.SessionID,
-			Message:   req.Message,
-			Hosts:     req.Hosts,
-		})
-	}
-
-	if s.enableThinking {
-		return s.agent.ChatWithThinking(ctx, agent.ChatRequest{
-			SessionID: req.SessionID,
-			Message:   req.Message,
-			Hosts:     req.Hosts,
-		})
-	}
-
-	return s.agent.Chat(ctx, agent.ChatRequest{
-		SessionID: req.SessionID,
-		Message:   req.Message,
-		Hosts:     req.Hosts,
-	})
-}
-
 // saveAssistantMessage 保存助手消息
-func (s *ChatService) saveAssistantMessage(req ChatRequest, resp *agent.ChatResponse) error {
+func (s *ChatService) saveAssistantMessage(req ChatRequest, resp *ChatResponse) error {
 	if req.SessionID == "" {
 		return nil
 	}
 
-	// 转换 ToolCallRecord 到 model.ToolCall
 	toolCalls := make([]model.ToolCall, 0, len(resp.ToolCalls))
 	for _, tc := range resp.ToolCalls {
 		toolCalls = append(toolCalls, model.ToolCall{
@@ -364,7 +370,6 @@ func (s *ChatService) updateSessionTitleIfNeeded(req ChatRequest) {
 		return
 	}
 
-	// 仅当标题为默认值时才更新
 	if session.Title == "" || strings.HasPrefix(session.Title, "会话 ") {
 		newTitle := s.generateSessionTitle(req.Message)
 		if newTitle != "" {
@@ -406,7 +411,6 @@ func (s *ChatService) CreateSession(title string, hosts []string) (string, error
 
 // GetHistory 获取对话历史
 func (s *ChatService) GetHistory(sessionID string) ([]*model.Message, error) {
-	// 检查会话是否存在
 	_, err := s.sessionRepo.GetByID(sessionID)
 	if err != nil {
 		return nil, fmt.Errorf("会话不存在: %w", err)

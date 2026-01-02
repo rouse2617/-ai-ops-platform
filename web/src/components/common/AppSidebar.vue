@@ -34,6 +34,7 @@
     </el-menu>
 
     <div class="sidebar-footer">
+      <MCPStatusIndicator :collapsed="collapsed" />
       <div class="version sidebar-text" v-if="!collapsed">v1.0.0</div>
       <el-tooltip v-else content="AI Pro v1.0.0" placement="right">
         <el-icon :size="14" color="#94a3b8"><InfoFilled /></el-icon>
@@ -49,6 +50,7 @@ import {
   ChatDotRound, Monitor, SetUp, Document,
   List, Setting, InfoFilled, Tickets
 } from '@element-plus/icons-vue'
+import MCPStatusIndicator from './MCPStatusIndicator.vue'
 
 defineProps<{
   collapsed?: boolean

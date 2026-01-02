@@ -1,0 +1,65 @@
+# AI-Ops 配置文件
+
+server:
+  addr: ":1280"
+  mode: debug  # debug / release
+
+
+llm:
+  endpoint: "https://api.openai.com/v1"
+  model: "gpt-4"
+  timeout: 120s
+  max_tokens: 4096
+  api_key: "your-api-key-here"
+
+ssh:
+  default_timeout: 30s
+  connect_timeout: 10s
+  max_connections: 100
+  max_concurrent: 20
+  keepalive_interval: 30s
+  default_user: root
+  default_key_path: ~/.ssh/id_rsa
+
+# 预定义主机列表
+hosts:
+  # 示例：使用密钥认证
+  # - name: node1
+  #   host: 192.168.1.10
+  #   port: 22
+  #   user: root
+  #
+  # 示例：使用密码认证
+  # - name: node2
+  #   host: 192.168.1.11
+  #   auth_type: password
+  #   user: admin
+  #   password: "your-password"
+
+database:
+  driver: sqlite
+  dsn: ./data/aiops.db
+
+scripts:
+  dir: ./scripts
+
+agent:
+  service_url: http://localhost:3001
+  timeout: 300
+
+log:
+  level: info    # debug / info / warn / error
+  format: json   # json / text
+  output: stdout
+
+auth:
+  enabled: false
+  secret: "your-secret-key-change-this-in-production"
+  token_duration: 24h
+  issuer: "ai-ops"
+
+mcp:
+  # - name: custom-tools
+  #   url: http://localhost:3001
+  #   timeout: 60
+  #   enabled: false

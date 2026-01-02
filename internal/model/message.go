@@ -18,7 +18,7 @@ type Message struct {
 type ToolCall struct {
 	Tool   string                 `json:"tool"`
 	Params map[string]interface{} `json:"params"`
-	Result string                 `json:"result"`
+	Result interface{}            `json:"result"`
 	Error  string                 `json:"error,omitempty"`
 }
 

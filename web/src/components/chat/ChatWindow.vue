@@ -160,11 +160,22 @@
         />
       </div>
       <div class="context-content">
-        <!-- 监控内容占位 - 后续任务实现 -->
-        <div class="monitor-placeholder">
+        <!-- 监控图表 -->
+        <template v-if="selectedHostIds.length > 0">
+          <div v-for="hostId in selectedHostIds.slice(0, 3)" :key="hostId" class="host-monitor-section">
+            <div class="host-monitor-header">
+              <el-icon><Monitor /></el-icon>
+              <span>{{ hostId }}</span>
+            </div>
+            <MonitorChart :host-id="hostId" metric="cpu" height="120px" @anomaly-click="handleAnomalyClick" />
+            <MonitorChart :host-id="hostId" metric="memory" height="120px" @anomaly-click="handleAnomalyClick" />
+            <QuickActions :host-id="hostId" @execute="handleQuickAction" />
+          </div>
+        </template>
+        <!-- 监控内容占位 -->
+        <div v-else class="monitor-placeholder">
           <el-icon :size="48" color="#c0c4cc"><DataAnalysis /></el-icon>
           <p>选择主机查看监控数据</p>
-          <p class="hint">监控面板将在后续任务中实现</p>
         </div>
       </div>
     </aside>
@@ -248,6 +259,8 @@ import { ElMessageBox, ElMessage } from 'element-plus'
 import MessageList from './MessageList.vue'
 import InputBox from './InputBox.vue'
 import HostSelector from './HostSelector.vue'
+import MonitorChart from './MonitorChart.vue'
+import QuickActions from './QuickActions.vue'
 
 const chatStore = useChatStore()
 const uiStore = useUIStore()
@@ -398,6 +411,17 @@ const handleNewSessionFromOverlay = async () => {
 const handleSessionSelectFromOverlay = async (sessionId: string) => {
   await chatStore.switchSession(sessionId)
   uiStore.closeHistoryOverlay()
+}
+
+// 监控面板事件处理
+const handleAnomalyClick = (timestamp: number) => {
+  // 跳转到对应时间的日志
+  console.log('Anomaly clicked at:', timestamp)
+}
+
+const handleQuickAction = (command: string) => {
+  // 执行快速操作命令
+  chatStore.sendMessage(`执行命令: ${command}`)
 }
 </script>
 
@@ -738,6 +762,27 @@ const handleSessionSelectFromOverlay = async (sessionId: string) => {
 .monitor-placeholder .hint {
   font-size: var(--text-xs);
   color: var(--color-gray-300);
+}
+
+/* 主机监控区域样式 */
+.host-monitor-section {
+  margin-bottom: var(--spacing-4);
+  padding-bottom: var(--spacing-4);
+  border-bottom: 1px solid var(--color-gray-200);
+}
+
+.host-monitor-section:last-child {
+  border-bottom: none;
+}
+
+.host-monitor-header {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-2);
+  margin-bottom: var(--spacing-3);
+  font-size: var(--text-sm);
+  font-weight: var(--font-semibold);
+  color: var(--color-gray-700);
 }
 
 /* ============================================

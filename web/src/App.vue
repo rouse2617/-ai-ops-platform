@@ -1,5 +1,8 @@
 <template>
   <ErrorBoundary>
+    <!-- 全局任务进度条 -->
+    <GlobalTaskProgress />
+
     <el-container class="app-container">
       <!-- 可折叠侧边栏 -->
       <el-aside
@@ -8,6 +11,8 @@
         :class="{ collapsed: sidebarCollapsed }"
       >
         <AppSidebar :collapsed="sidebarCollapsed" />
+        <!-- MCP 状态指示器 -->
+        <MCPStatusIndicator :collapsed="sidebarCollapsed" />
       </el-aside>
 
       <el-container>
@@ -48,6 +53,8 @@ import { Expand, Fold } from '@element-plus/icons-vue'
 import AppHeader from '@/components/common/AppHeader.vue'
 import AppSidebar from '@/components/common/AppSidebar.vue'
 import ErrorBoundary from '@/components/common/ErrorBoundary.vue'
+import GlobalTaskProgress from '@/components/common/GlobalTaskProgress.vue'
+import MCPStatusIndicator from '@/components/common/MCPStatusIndicator.vue'
 import { useAppStore } from '@/stores/app'
 
 const route = useRoute()

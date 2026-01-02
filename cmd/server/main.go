@@ -6,18 +6,14 @@ import (
 	"os/signal"
 	"syscall"
 
-	"ai-ops/internal/agent"
 	"ai-ops/internal/api"
 	"ai-ops/internal/cache"
 	"ai-ops/internal/config"
 	"ai-ops/internal/llm"
-	"ai-ops/internal/mcp"
 	"ai-ops/internal/model"
 	"ai-ops/internal/repository"
 	"ai-ops/internal/security"
 	"ai-ops/internal/ssh"
-	"ai-ops/internal/tool"
-	"ai-ops/internal/tool/builtin"
 	"ai-ops/pkg/logger"
 	"time"
 
@@ -52,7 +48,7 @@ func main() {
 	logger.Info("配置加载成功",
 		zap.String("addr", cfg.Server.Addr),
 		zap.String("mode", cfg.Server.Mode),
-		zap.String("llm_model", cfg.LLM.Model),
+		zap.String("agent_service_url", cfg.Agent.ServiceURL),
 	)
 
 	// 2.1 初始化数据库
@@ -172,34 +168,7 @@ func main() {
 		logger.Info("从配置文件加载主机", zap.Int("count", len(cfg.Hosts)))
 	}
 
-	// 4. 初始化 Tool 注册中心
-	toolRegistry := tool.NewRegistry()
-
-	// 注册内置工具
-	getHostsFunc := func(group string) []builtin.HostBasicInfo {
-		poolHosts := sshPool.ListHosts()
-		hosts := make([]builtin.HostBasicInfo, 0, len(poolHosts))
-		for _, h := range poolHosts {
-			if group != "" && h.Group != group {
-				continue
-			}
-			hosts = append(hosts, builtin.HostBasicInfo{
-				Name:   h.Name,
-				Host:   h.Host,
-				Port:   h.Port,
-				User:   h.User,
-				Group:  h.Group,
-				Status: "unknown",
-			})
-		}
-		return hosts
-	}
-	if err := builtin.RegisterAll(toolRegistry, getHostsFunc); err != nil {
-		logger.Fatal("注册内置工具失败", zap.Error(err))
-	}
-	logger.Info("Tool 注册中心初始化完成", zap.Int("tools", toolRegistry.Count()))
-
-	// 5. 初始化 LLM 客户端
+	// 4. 初始化 LLM 客户端（用于 AI 分析功能）
 	llmClient := llm.NewOpenAIClient(llm.OpenAIConfig{
 		Endpoint:  cfg.LLM.Endpoint,
 		Model:     cfg.LLM.Model,
@@ -212,66 +181,27 @@ func main() {
 		zap.String("model", cfg.LLM.Model),
 	)
 
-	// 6. 初始化 Agent
-	aiAgent := agent.NewAgent(llmClient, toolRegistry, sshPool, agent.Config{
-		MaxLoops:       cfg.Agent.MaxLoops,
-		Timeout:        time.Duration(cfg.Agent.Timeout) * time.Second,
-		PromptVersion:  cfg.Agent.PromptVersion,
-		EnableThinking: cfg.Agent.EnableThinking,
-	})
-	logger.Info("Agent 初始化完成",
-		zap.Int("max_loops", cfg.Agent.MaxLoops),
-		zap.Int("timeout", cfg.Agent.Timeout),
-		zap.String("prompt_version", cfg.Agent.PromptVersion),
-		zap.Bool("enable_thinking", cfg.Agent.EnableThinking),
-	)
-
-	// 6.5 初始化 MCP Manager
-	mcpManager := mcp.NewManager(toolRegistry)
-	for _, mcpCfg := range cfg.MCP {
-		if err := mcpManager.RegisterClient(mcp.Config{
-			Name:    mcpCfg.Name,
-			URL:     mcpCfg.URL,
-			Timeout: time.Duration(mcpCfg.Timeout) * time.Second,
-			Enabled: mcpCfg.Enabled,
-		}); err != nil {
-			logger.Warn("注册 MCP server 失败",
-				zap.String("name", mcpCfg.Name),
-				zap.Error(err),
-			)
-		}
-	}
-	if len(cfg.MCP) > 0 {
-		logger.Info("MCP 初始化完成",
-			zap.Int("servers", len(mcpManager.ListClients())),
-			zap.Any("stats", mcpManager.GetStats()),
-		)
-	}
-
-	// 7. 初始化缓存（可选）
+	// 5. 初始化缓存（可选）
 	var cacheInstance cache.Cache
 	// 如果需要启用缓存，取消下面注释
 	// cacheInstance = cache.NewMemoryCache(1000, 10*time.Minute)
 	// logger.Info("缓存初始化完成")
 
-	// 8. 初始化 HTTP 路由
+	// 6. 初始化 HTTP 路由
 	router := api.NewRouter(api.RouterConfig{
-		Agent:          aiAgent,
-		ToolRegistry:   toolRegistry,
-		SSHPool:        sshPool,
-		PolicyStore:    policyStore,
-		AuditLogger:    auditLogger,
-		HostRepo:       hostRepo,
-		SessionRepo:    sessionRepo,
-		GroupRepo:      groupRepo,
-		ConfigRepo:     configRepo,
-		AnalysisRepo:   analysisRepo,
-		LLMClient:      llmClient,
-		Cache:          cacheInstance,
-		Version:        Version,
-		Mode:           cfg.Server.Mode,
-		EnableThinking: cfg.Agent.EnableThinking,
-		Config:         cfg,
+		SSHPool:      sshPool,
+		PolicyStore:  policyStore,
+		AuditLogger:  auditLogger,
+		HostRepo:     hostRepo,
+		SessionRepo:  sessionRepo,
+		GroupRepo:    groupRepo,
+		ConfigRepo:   configRepo,
+		AnalysisRepo: analysisRepo,
+		LLMClient:    llmClient,
+		Cache:        cacheInstance,
+		Version:      Version,
+		Mode:         cfg.Server.Mode,
+		Config:       cfg,
 	})
 
 	// 记录认证状态
@@ -286,7 +216,7 @@ func main() {
 
 	logger.Info("HTTP 路由初始化完成")
 
-	// 9. 启动服务
+	// 7. 启动服务
 	go func() {
 		logger.Info("启动 HTTP 服务", zap.String("addr", cfg.Server.Addr))
 		if err := router.Run(cfg.Server.Addr); err != nil {
@@ -294,7 +224,7 @@ func main() {
 		}
 	}()
 
-	// 10. 等待退出信号
+	// 8. 等待退出信号
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit

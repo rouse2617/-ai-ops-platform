@@ -73,10 +73,8 @@ type ScriptsConfig struct {
 
 // AgentConfig Agent 配置
 type AgentConfig struct {
-	MaxLoops       int    `yaml:"max_loops"`        // 最大循环次数
-	Timeout        int    `yaml:"timeout"`          // 单次请求超时（秒）
-	PromptVersion  string `yaml:"prompt_version"`   // 提示词版本: standard / enhanced
-	EnableThinking bool   `yaml:"enable_thinking"`  // 启用思考过程输出
+	ServiceURL string `yaml:"service_url"` // Node.js Agent Service URL
+	Timeout    int    `yaml:"timeout"`     // 单次请求超时（秒）
 }
 
 // LogConfig 日志配置
@@ -184,19 +182,12 @@ func (c *Config) setDefaults() {
 	}
 
 	// Agent 默认值
-	if c.Agent.MaxLoops == 0 {
-		c.Agent.MaxLoops = 10
+	if c.Agent.ServiceURL == "" {
+		c.Agent.ServiceURL = "http://localhost:3000"
 	}
 	if c.Agent.Timeout == 0 {
 		c.Agent.Timeout = 300 // 5 分钟
 	}
-	if c.Agent.PromptVersion == "" {
-		c.Agent.PromptVersion = "enhanced" // 默认使用增强版
-	}
-	// EnableThinking 默认为 false，等 Phase 2 实现后启用
-	// if c.Agent.EnableThinking == false {
-	// 	c.Agent.EnableThinking = true
-	// }
 
 	// Log 默认值
 	if c.Log.Level == "" {
