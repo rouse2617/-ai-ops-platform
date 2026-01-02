@@ -13,51 +13,45 @@ AI 驱动的智能运维平台，通过自然语言与服务器交互，实现�
                                 ▼
 ┌─────────────────────────────────────────────────────────────────┐
 │                         Go Backend                               │
-│                    (Gin + SQLite + SSH)                          │
-│                      Port: 1280                                  │
-└─────────────────────────────────────────────────────────────────┘
-                                │
-                                ▼
-┌───────────────────────────────────────��─────────────────────────┐
-│                      Agent Service                               │
-│                 (Node.js + Claude API)                           │
-│                      Port: 3001                                  │
-└─────────────────────────────────────────────────────────────────┘
-                                │
-                                ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                       MCP Server                                 │
-│              (Model Context Protocol - stdio)                    │
-│                                                                  │
-│  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐        │
-│  │ System   │  │   Log    │  │ Process  │  │   Host   │        │
-│  │  Tools   │  │  Tools   │  │  Tools   │  │  Tools   │        │
-│  └──────────┘  └──────────┘  └──────────┘  └──────────┘        │
+│                      (Gin + SQLite)                              │
+│                       Port: 1280                                 │
+│  ┌─────────────────────────────────────────────────────────┐    │
+│  │              LLM Client (多 Provider 支持)               │    │
+│  │         OpenAI / Anthropic Claude API                    │    │
+│  └─────────────────────────────────────────────────────────┘    │
+│  ┌─────────────────────────────────────────────────────────┐    │
+│  │                    Tool Registry                         │    │
+│  │    check_cpu / check_memory / check_disk / query_log     │    │
+│  │    check_process / run_command / list_hosts              │    │
+│  └─────────────────────────────────────────────────────────┘    │
+│  ┌─────────────────────────────────────────────────────────┐    │
+│  │                     SSH Pool                             │    │
+│  │              golang.org/x/crypto/ssh                     │    │
+│  └─────────────────────────────────────────────────────────┘    │
 └─────────────────────────────────────────────────────────────────┘
                                 │
                                 ▼
 ┌─────────────────────────────────────────────────────────────────┐
 │                    Target Hosts (SSH)                            │
-│              Direct SSH via ssh2 library                         │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
 ## 功能特性
 
 - **自然语言交互**: 通过对话方式执行运维操作
+- **多 LLM 支持**: 支持 OpenAI 和 Anthropic Claude API
 - **多主机管理**: 支持管理多台服务器
 - **实时监控**: CPU、内存、磁盘使用率监控
 - **日志分析**: 智能日志查询和分析
 - **进程管理**: 查看和管理系统进程
 - **命令执行**: 安全的远程命令执行
-- **MCP 协议**: 标准化的工具调用接口
 
 ## 快速开始
 
 ### 环境要求
 
 - Go 1.21+
-- Node.js 18+
+- Node.js 18+ (仅前端开发需要)
 - pnpm (推荐) 或 npm
 
 ### 1. 克隆项目
@@ -72,7 +66,6 @@ cd ai-ops-platform
 ```bash
 # 复制配置模板
 cp config.yaml.example config.yaml
-cp agent-service/.env.example agent-service/.env
 
 # 编辑配置文件，填入实际值
 ```
@@ -83,7 +76,9 @@ server:
   addr: ":1280"
 
 llm:
-  api_key: "your-api-key"  # LLM API Key
+  provider: "anthropic"  # openai / anthropic
+  api_key: "your-api-key"
+  model: "claude-sonnet-4-5-20250929"
 
 hosts:
   - name: my-server
@@ -93,40 +88,16 @@ hosts:
     password: "your-password"
 ```
 
-**agent-service/.env** 配置：
-```env
-ANTHROPIC_API_KEY=your_api_key_here
-GO_BACKEND_URL=http://localhost:1280
-```
-
 ### 3. 启动服务
-
-#### 方式一：分别启动
 
 ```bash
 # 终端 1: 启动 Go 后端
 go run cmd/server/main.go
 
-# 终端 2: 构建并启动 MCP Server
-cd mcp-server
-npm install
-npm run build
-
-# 终端 3: 启动 Agent Service
-cd agent-service
-npm install
-npm run dev
-
-# 终端 4: 启动前端
+# 终端 2: 启动前端 (开发模式)
 cd web
 pnpm install
 pnpm dev
-```
-
-#### 方式二：Docker Compose
-
-```bash
-docker-compose up -d
 ```
 
 ### 4. 访问应用
@@ -142,17 +113,12 @@ ai-ops-platform/
 ├── internal/               # Go 内部包
 │   ├── api/               # HTTP API
 │   ├── config/            # 配置管理
+│   ├── llm/               # LLM 客户端 (OpenAI/Anthropic)
 │   ├── model/             # 数据模型
 │   ├── repository/        # 数据访问
-│   └── service/           # 业务逻辑
-├── agent-service/          # Node.js Agent 服务
-│   └── src/
-│       ├── agent/         # Claude API 集成
-│       └── types/         # TypeScript 类型
-├── mcp-server/             # MCP 协议服务
-│   └── src/
-│       ├── ssh/           # SSH 客户端
-│       └── tools/         # MCP 工具定义
+│   ├── service/           # 业务逻辑
+│   ├── ssh/               # SSH 连接池
+│   └── tool/              # 内置工具
 ├── web/                    # Vue 前端
 │   └── src/
 │       ├── components/    # Vue 组件
@@ -162,7 +128,7 @@ ai-ops-platform/
 └── docker-compose.yml      # Docker 编排
 ```
 
-## MCP 工具列表
+## 内置工具列表
 
 | 工具名 | 描述 |
 |--------|------|
@@ -192,25 +158,36 @@ ai-ops-platform/
 "执行 whoami && uname -a"
 ```
 
-## 开发指南
+## LLM Provider 配置
 
-### 添加新的 MCP 工具
+### Anthropic Claude (推荐)
 
-1. 在 `mcp-server/src/tools/` 创建工具类
-2. 在 `mcp-server/src/tools/index.ts` 注册工具
-3. 重新构建 MCP Server
-
-### 前端开发
-
-```bash
-cd web
-pnpm dev
+```yaml
+llm:
+  provider: "anthropic"
+  endpoint: ""  # 留空使用官方 API
+  model: "claude-sonnet-4-5-20250929"
+  api_key: "your-anthropic-api-key"
 ```
 
-### 后端开发
+### OpenAI
 
-```bash
-go run cmd/server/main.go
+```yaml
+llm:
+  provider: "openai"
+  endpoint: "https://api.openai.com/v1"
+  model: "gpt-4"
+  api_key: "your-openai-api-key"
+```
+
+### 使用代理
+
+```yaml
+llm:
+  provider: "anthropic"
+  endpoint: "https://your-proxy.com/api"  # 代理地址
+  model: "claude-sonnet-4-5-20250929"
+  api_key: "your-api-key"
 ```
 
 ## 技术栈
@@ -219,16 +196,7 @@ go run cmd/server/main.go
 - Go 1.21 + Gin
 - SQLite
 - SSH (golang.org/x/crypto/ssh)
-
-**Agent Service:**
-- Node.js + TypeScript
-- Anthropic Claude API
-- MCP SDK
-
-**MCP Server:**
-- Node.js + TypeScript
-- ssh2 (直接 SSH 连接)
-- Model Context Protocol
+- Anthropic SDK Go / OpenAI API
 
 **前端:**
 - Vue 3 + TypeScript

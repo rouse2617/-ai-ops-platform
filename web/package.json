@@ -13,6 +13,7 @@
     "axios": "^1.6.7",
     "dexie": "^4.2.1",
     "diff2html": "^3.4.52",
+    "echarts": "^6.0.0",
     "element-plus": "^2.6.1",
     "fast-check": "^4.5.2",
     "highlight.js": "^11.9.0",

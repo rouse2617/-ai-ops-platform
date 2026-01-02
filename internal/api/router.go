@@ -62,8 +62,21 @@ func NewRouter(cfg RouterConfig) *gin.Engine {
 		authMiddleware = func(c *gin.Context) { c.Next() }
 	}
 
+	// 创建 LLM 客户端
+	llmClient, err := llm.NewClient(llm.ProviderConfig{
+		Type:      llm.ProviderType(cfg.Config.LLM.Provider),
+		Endpoint:  cfg.Config.LLM.Endpoint,
+		Model:     cfg.Config.LLM.Model,
+		APIKey:    cfg.Config.LLM.APIKey,
+		Timeout:   cfg.Config.LLM.Timeout,
+		MaxTokens: cfg.Config.LLM.MaxTokens,
+	})
+	if err != nil {
+		panic("创建 LLM 客户端失败: " + err.Error())
+	}
+
 	// 创建 Service 层
-	chatService := service.NewChatService(cfg.Config.Agent.ServiceURL, cfg.SessionRepo)
+	chatService := service.NewChatService(llmClient, cfg.Config.Agent.ServiceURL, cfg.SessionRepo)
 	hostService := service.NewHostService(cfg.SSHPool, cfg.HostRepo, cfg.GroupRepo, cfg.Cache)
 
 	// 创建 handlers

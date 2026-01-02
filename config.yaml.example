@@ -6,8 +6,9 @@ server:
 
 
 llm:
-  endpoint: "https://api.openai.com/v1"
-  model: "gpt-4"
+  provider: "anthropic"  # openai / anthropic
+  endpoint: ""  # 留空使用官方 API，或填代理地址如 https://api.example.com
+  model: "claude-sonnet-4-5-20250929"
   timeout: 120s
   max_tokens: 4096
   api_key: "your-api-key-here"

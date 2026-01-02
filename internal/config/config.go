@@ -29,6 +29,7 @@ type ServerConfig struct {
 
 // LLMConfig LLM 配置
 type LLMConfig struct {
+	Provider  string        `yaml:"provider"`   // LLM 提供商: openai / anthropic
 	Endpoint  string        `yaml:"endpoint"`   // API 端点
 	Model     string        `yaml:"model"`      // 模型名称
 	Timeout   time.Duration `yaml:"timeout"`    // 请求超时
@@ -132,6 +133,9 @@ func (c *Config) setDefaults() {
 	}
 
 	// LLM 默认值
+	if c.LLM.Provider == "" {
+		c.LLM.Provider = "openai"
+	}
 	if c.LLM.Endpoint == "" {
 		c.LLM.Endpoint = "http://localhost:11434/v1"
 	}

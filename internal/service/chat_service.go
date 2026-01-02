@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"ai-ops/internal/llm"
 	"ai-ops/internal/model"
 	"ai-ops/internal/repository"
 
@@ -20,14 +21,16 @@ import (
 
 // ChatService 聊天服务
 type ChatService struct {
+	llmClient       llm.Client
 	agentServiceURL string
 	sessionRepo     repository.SessionRepository
 	httpClient      *http.Client
 }
 
 // NewChatService 创建聊天服务
-func NewChatService(agentServiceURL string, sessionRepo repository.SessionRepository) *ChatService {
+func NewChatService(llmClient llm.Client, agentServiceURL string, sessionRepo repository.SessionRepository) *ChatService {
 	return &ChatService{
+		llmClient:       llmClient,
 		agentServiceURL: agentServiceURL,
 		sessionRepo:     sessionRepo,
 		httpClient: &http.Client{
