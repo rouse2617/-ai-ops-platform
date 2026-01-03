@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"ai-ops/internal/agent"
 	"ai-ops/internal/llm"
 	"ai-ops/internal/model"
 	"ai-ops/internal/repository"
@@ -19,23 +20,24 @@ import (
 
 // ChatService 聊天服务
 type ChatService struct {
-	llmClient    llm.Client
-	toolRegistry *tool.Registry
-	sshPool      *ssh.Pool
-	sessionRepo  repository.SessionRepository
-	maxLoops     int
-	timeout      time.Duration
+	agent       *agent.Agent
+	sessionRepo repository.SessionRepository
 }
 
 // NewChatService 创建聊天服务
 func NewChatService(llmClient llm.Client, toolRegistry *tool.Registry, sshPool *ssh.Pool, sessionRepo repository.SessionRepository) *ChatService {
+	// 创建 Agent
+	agentInstance := agent.NewAgent(llmClient, toolRegistry, sshPool, agent.Config{
+		MaxLoops:      10,
+		Timeout:       5 * time.Minute,
+		PromptVersion: "enhanced",
+		CacheTTL:      30 * time.Second,
+		MaxConcurrent: 10,
+	})
+
 	return &ChatService{
-		llmClient:    llmClient,
-		toolRegistry: toolRegistry,
-		sshPool:      sshPool,
-		sessionRepo:  sessionRepo,
-		maxLoops:     10,
-		timeout:      5 * time.Minute,
+		agent:       agentInstance,
+		sessionRepo: sessionRepo,
 	}
 }
 
@@ -158,137 +160,103 @@ type StreamChunk struct {
 	Status     string          `json:"status,omitempty"`
 }
 
-// callAgentService 使用 llmClient 和 ToolRegistry 执行对话
+// callAgentService 使用 Agent 执行对话
 func (s *ChatService) callAgentService(ctx context.Context, req ChatRequest) (*ChatResponse, error) {
-	ctx, cancel := context.WithTimeout(ctx, s.timeout)
-	defer cancel()
+	// 从数据库加载历史消息
+	history := s.loadHistoryFromDB(req.SessionID)
 
-	// 构建消息列表
-	messages := s.buildMessages(req)
-
-	// 获取工具定义
-	toolDefs := s.buildToolDefinitions()
-
-	// Agent 循环
-	var toolCallRecords []ToolCallRecord
-	var finalReply string
-
-	for i := 0; i < s.maxLoops; i++ {
-		// 调用 LLM
-		resp, err := s.llmClient.ChatWithTools(ctx, messages, toolDefs)
-		if err != nil {
-			return nil, fmt.Errorf("LLM 调用失败: %w", err)
+	// 如果前端也传了历史，合并（优先使用数据库的）
+	if len(history) == 0 && len(req.History) > 0 {
+		for _, msg := range req.History {
+			history = append(history, llm.Message{
+				Role:    msg.Role,
+				Content: msg.Content,
+			})
 		}
-
-		// 检查是否有工具调用
-		if resp.HasToolCalls() {
-			// 执行工具调用
-			toolResults, records := s.executeToolCalls(ctx, resp.Message.ToolCalls, req.Hosts)
-			toolCallRecords = append(toolCallRecords, records...)
-
-			// 添加助手消息（包含工具调用）
-			messages = append(messages, resp.Message)
-
-			// 添加工具结果消息
-			messages = append(messages, toolResults...)
-			continue
-		}
-
-		// 没有工具调用，返回最终回复
-		finalReply = resp.Message.Content
-		break
 	}
 
-	// 如果达到最大循环次数但没有最终回复
-	if finalReply == "" && len(toolCallRecords) > 0 {
-		finalReply = "已执行相关操作，请查看工具调用结果。"
+	// 调用 Agent
+	agentResp, err := s.agent.Chat(ctx, agent.ChatRequest{
+		SessionID: req.SessionID,
+		Message:   req.Message,
+		Hosts:     req.Hosts,
+		History:   history,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	// 转换响应
+	toolCalls := make([]ToolCallRecord, 0, len(agentResp.ToolCalls))
+	for _, tc := range agentResp.ToolCalls {
+		toolCalls = append(toolCalls, ToolCallRecord{
+			ID:     tc.ID,
+			Tool:   tc.Tool,
+			Params: tc.Params,
+			Result: tc.Result,
+			Error:  tc.Error,
+		})
 	}
 
 	return &ChatResponse{
-		SessionID: req.SessionID,
-		Reply:     finalReply,
-		ToolCalls: toolCallRecords,
+		SessionID: agentResp.SessionID,
+		Reply:     agentResp.Reply,
+		ToolCalls: toolCalls,
+		Thinking:  agentResp.Thinking,
 	}, nil
 }
 
-// callAgentServiceStream 使用 llmClient 和 ToolRegistry 执行流式对话
+// callAgentServiceStream 使用 Agent 执行流式对话
 func (s *ChatService) callAgentServiceStream(ctx context.Context, req ChatRequest, callback func(chunk StreamChunk)) error {
-	ctx, cancel := context.WithTimeout(ctx, s.timeout)
-	defer cancel()
+	// 从数据库加载历史消息
+	history := s.loadHistoryFromDB(req.SessionID)
 
-	// 构建消息列表
-	messages := s.buildMessages(req)
-
-	// 获取工具定义
-	toolDefs := s.buildToolDefinitions()
-
-	// Agent 循环
-	for i := 0; i < s.maxLoops; i++ {
-		var contentBuffer string
-		var toolCalls []llm.ToolCall
-		done := false
-
-		// 流式调用 LLM
-		err := s.llmClient.ChatStreamWithTools(ctx, messages, toolDefs, func(chunk llm.StreamChunk) {
-			switch chunk.Type {
-			case "content":
-				contentBuffer += chunk.Content
-				callback(StreamChunk{
-					Type:    "content",
-					Content: chunk.Content,
-				})
-			case "tool_call":
-				if chunk.ToolCall != nil {
-					toolCalls = append(toolCalls, *chunk.ToolCall)
-				}
-			case "done":
-				done = true
-			}
-		})
-
-		if err != nil {
-			return fmt.Errorf("LLM 流式调用失败: %w", err)
-		}
-
-		// 检查是否有工具调用
-		if len(toolCalls) > 0 {
-			// 通知前端工具调用
-			for _, tc := range toolCalls {
-				callback(StreamChunk{
-					Type: "tool_call",
-					ToolCall: &ToolCallRecord{
-						ID:     tc.ID,
-						Tool:   tc.Function.Name,
-						Params: s.parseToolParams(tc.Function.Arguments),
-					},
-				})
-			}
-
-			// 执行工具
-			toolResults, records := s.executeToolCalls(ctx, toolCalls, req.Hosts)
-
-			// 通知前端工具结果
-			for _, r := range records {
-				callback(StreamChunk{
-					Type:       "tool_result",
-					ToolResult: &r,
-				})
-			}
-
-			// 添加消息继续对话
-			messages = append(messages, llm.NewAssistantToolCallMessage(toolCalls))
-			messages = append(messages, toolResults...)
-			continue
-		}
-
-		// 没有工具调用，对话结束
-		if done {
-			callback(StreamChunk{Type: "done"})
-			break
+	// 如果前端也传了历史，合并（优先使用数据库的）
+	if len(history) == 0 && len(req.History) > 0 {
+		for _, msg := range req.History {
+			history = append(history, llm.Message{
+				Role:    msg.Role,
+				Content: msg.Content,
+			})
 		}
 	}
 
-	return nil
+	// 调用 Agent 流式接口
+	return s.agent.ChatStream(ctx, agent.ChatRequest{
+		SessionID: req.SessionID,
+		Message:   req.Message,
+		Hosts:     req.Hosts,
+		History:   history,
+	}, func(chunk agent.StreamChunk) {
+		// 转换 StreamChunk
+		serviceChunk := StreamChunk{
+			Type:    chunk.Type,
+			Content: chunk.Content,
+			Error:   chunk.Error,
+			Step:    chunk.Step,
+			Status:  chunk.Status,
+		}
+
+		if chunk.ToolCall != nil {
+			serviceChunk.ToolCall = &ToolCallRecord{
+				ID:     chunk.ToolCall.ID,
+				Tool:   chunk.ToolCall.Function.Name,
+				Params: s.parseToolParams(chunk.ToolCall.Function.Arguments),
+			}
+		}
+
+		if chunk.ToolResult != nil {
+			serviceChunk.ToolResult = &ToolCallRecord{
+				ID:     chunk.ToolResult.ID,
+				Tool:   chunk.ToolResult.Tool,
+				Params: chunk.ToolResult.Params,
+				Result: chunk.ToolResult.Result,
+				Error:  chunk.ToolResult.Error,
+			}
+		}
+
+		callback(serviceChunk)
+	})
 }
 
 // normalizeRequest 标准化请求
@@ -438,125 +406,34 @@ func (s *ChatService) DeleteSession(sessionID string) error {
 	return s.sessionRepo.Delete(sessionID)
 }
 
-// buildMessages 构建消息列表
-func (s *ChatService) buildMessages(req ChatRequest) []llm.Message {
-	messages := make([]llm.Message, 0, len(req.History)+2)
-
-	// 系统提示词
-	systemPrompt := s.buildSystemPrompt(req.Hosts)
-	messages = append(messages, llm.NewSystemMessage(systemPrompt))
-
-	// 历史消息 - 转换类型
-	for _, msg := range req.History {
-		messages = append(messages, llm.Message{
-			Role:    msg.Role,
-			Content: msg.Content,
-		})
-	}
-
-	// 用户消息
-	messages = append(messages, llm.NewUserMessage(req.Message))
-
-	return messages
-}
-
-// buildSystemPrompt 构建系统提示词
-func (s *ChatService) buildSystemPrompt(hosts []string) string {
-	prompt := "你是一个专业的 AI 运维助手，可以帮助用户管理和操作服务器。\n\n"
-
-	if len(hosts) > 0 {
-		prompt += fmt.Sprintf("当前关联的主机: %s\n\n", strings.Join(hosts, ", "))
-	}
-
-	prompt += "你可以使用提供的工具来执行各种运维任务。请根据用户的需求选择合适的工具。\n"
-	prompt += "在执行命令前，请确保理解用户的意图，必要时向用户确认。"
-
-	return prompt
-}
-
-// buildToolDefinitions 构建工具定义
-func (s *ChatService) buildToolDefinitions() []llm.ToolDef {
-	if s.toolRegistry == nil {
+// loadHistoryFromDB 从数据库加载历史消息
+func (s *ChatService) loadHistoryFromDB(sessionID string) []llm.Message {
+	if sessionID == "" {
 		return nil
 	}
 
-	schemas := s.toolRegistry.GenerateJSONSchema()
-	toolDefs := make([]llm.ToolDef, 0, len(schemas))
+	messages, err := s.sessionRepo.GetMessages(sessionID)
+	if err != nil {
+		return nil
+	}
 
-	for _, schema := range schemas {
-		function, ok := schema["function"].(map[string]interface{})
-		if !ok {
+	// 只加载纯文本消息（user 和 assistant），跳过工具调用相关消息
+	history := make([]llm.Message, 0, len(messages))
+	for _, msg := range messages {
+		// 只保留有内容的 user 和 assistant 消息
+		if msg.Content == "" {
 			continue
 		}
-
-		name, _ := function["name"].(string)
-		description, _ := function["description"].(string)
-		parameters, _ := function["parameters"].(map[string]interface{})
-
-		toolDefs = append(toolDefs, llm.ToolDef{
-			Type: "function",
-			Function: llm.FunctionDef{
-				Name:        name,
-				Description: description,
-				Parameters:  parameters,
-			},
+		role := string(msg.Role)
+		if role != "user" && role != "assistant" {
+			continue
+		}
+		history = append(history, llm.Message{
+			Role:    role,
+			Content: msg.Content,
 		})
 	}
-
-	return toolDefs
-}
-
-// executeToolCalls 执行工具调用
-func (s *ChatService) executeToolCalls(ctx context.Context, toolCalls []llm.ToolCall, hosts []string) ([]llm.Message, []ToolCallRecord) {
-	toolMessages := make([]llm.Message, 0, len(toolCalls))
-	records := make([]ToolCallRecord, 0, len(toolCalls))
-
-	for _, tc := range toolCalls {
-		toolName := tc.Function.Name
-		params := s.parseToolParams(tc.Function.Arguments)
-
-		// 执行工具
-		toolCtx := &tool.Context{
-			Hosts:   hosts,
-			SSH:     s.sshPool,
-			Timeout: 30 * time.Second,
-		}
-
-		result, err := s.toolRegistry.Execute(toolCtx, toolName, params)
-
-		var resultStr string
-		var errorStr string
-
-		if err != nil {
-			errorStr = err.Error()
-			resultStr = fmt.Sprintf("工具执行失败: %s", err.Error())
-		} else if result != nil {
-			if result.Success {
-				resultStr = result.Message
-				if result.Data != nil {
-					dataJSON, _ := json.Marshal(result.Data)
-					resultStr = string(dataJSON)
-				}
-			} else {
-				errorStr = result.Error
-				resultStr = fmt.Sprintf("工具执行失败: %s", result.Error)
-			}
-		}
-
-		// 添加工具结果消息
-		toolMessages = append(toolMessages, llm.NewToolMessage(tc.ID, toolName, resultStr))
-
-		// 记录工具调用
-		records = append(records, ToolCallRecord{
-			ID:     tc.ID,
-			Tool:   toolName,
-			Params: params,
-			Result: resultStr,
-			Error:  errorStr,
-		})
-	}
-
-	return toolMessages, records
+	return history
 }
 
 // parseToolParams 解析工具参数
