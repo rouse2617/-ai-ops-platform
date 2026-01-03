@@ -35,7 +35,12 @@ func NewClient(cfg ProviderConfig) (Client, error) {
 			MaxTokens: cfg.MaxTokens,
 		}), nil
 	case ProviderAnthropic:
-		return nil, fmt.Errorf("anthropic provider not implemented yet")
+		return NewAnthropicClient(AnthropicConfig{
+			APIKey:    cfg.APIKey,
+			BaseURL:   cfg.Endpoint,
+			Model:     cfg.Model,
+			MaxTokens: cfg.MaxTokens,
+		}), nil
 	default:
 		return nil, fmt.Errorf("unsupported provider type: %s", cfg.Type)
 	}

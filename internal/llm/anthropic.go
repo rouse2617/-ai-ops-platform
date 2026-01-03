@@ -33,7 +33,10 @@ func NewAnthropicClient(cfg AnthropicConfig) *AnthropicClient {
 		cfg.MaxTokens = 4096
 	}
 
-	opts := []option.RequestOption{option.WithAPIKey(cfg.APIKey)}
+	opts := []option.RequestOption{
+		option.WithAPIKey(cfg.APIKey),
+		option.WithHeader("Authorization", "Bearer "+cfg.APIKey),
+	}
 	if cfg.BaseURL != "" {
 		opts = append(opts, option.WithBaseURL(cfg.BaseURL))
 	}
@@ -239,12 +242,20 @@ func (c *AnthropicClient) convertMessages(messages []Message) (string, []anthrop
 func (c *AnthropicClient) convertTools(tools []ToolDef) []anthropic.ToolUnionParam {
 	result := make([]anthropic.ToolUnionParam, len(tools))
 	for i, tool := range tools {
+		// 构建完整的 JSON Schema
+		schema := anthropic.ToolInputSchemaParam{
+			Type: "object",
+		}
+		if tool.Function.Parameters != nil {
+			if props, ok := tool.Function.Parameters["properties"]; ok {
+				schema.Properties = props
+			}
+		}
+
 		toolParam := anthropic.ToolParam{
 			Name:        tool.Function.Name,
 			Description: anthropic.String(tool.Function.Description),
-			InputSchema: anthropic.ToolInputSchemaParam{
-				Properties: tool.Function.Parameters,
-			},
+			InputSchema: schema,
 		}
 		result[i] = anthropic.ToolUnionParam{OfTool: &toolParam}
 	}

@@ -14,6 +14,8 @@ import (
 	"ai-ops/internal/repository"
 	"ai-ops/internal/security"
 	"ai-ops/internal/ssh"
+	"ai-ops/internal/tool"
+	"ai-ops/internal/tool/builtin"
 	"ai-ops/pkg/logger"
 	"time"
 
@@ -181,6 +183,33 @@ func main() {
 		zap.String("model", cfg.LLM.Model),
 	)
 
+	// 4.1 初始化工具注册表
+	toolRegistry := tool.NewRegistry()
+
+	// 注册内置工具
+	getHostsFunc := func(group string) []builtin.HostBasicInfo {
+		hosts := sshPool.ListHosts()
+		result := make([]builtin.HostBasicInfo, 0, len(hosts))
+		for _, h := range hosts {
+			if group == "" || h.Group == group {
+				result = append(result, builtin.HostBasicInfo{
+					Name:   h.Name,
+					Host:   h.Host,
+					Port:   h.Port,
+					User:   h.User,
+					Group:  h.Group,
+					Status: "unknown",
+				})
+			}
+		}
+		return result
+	}
+
+	if err := builtin.RegisterAll(toolRegistry, getHostsFunc); err != nil {
+		logger.Fatal("注册内置工具失败", zap.Error(err))
+	}
+	logger.Info("工具注册表初始化完成", zap.Int("tool_count", toolRegistry.Count()))
+
 	// 5. 初始化缓存（可选）
 	var cacheInstance cache.Cache
 	// 如果需要启用缓存，取消下面注释
@@ -190,6 +219,7 @@ func main() {
 	// 6. 初始化 HTTP 路由
 	router := api.NewRouter(api.RouterConfig{
 		SSHPool:      sshPool,
+		ToolRegistry: toolRegistry,
 		PolicyStore:  policyStore,
 		AuditLogger:  auditLogger,
 		HostRepo:     hostRepo,

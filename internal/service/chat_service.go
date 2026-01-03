@@ -1,19 +1,17 @@
 package service
 
 import (
-	"bufio"
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
 	"strings"
 	"time"
 
 	"ai-ops/internal/llm"
 	"ai-ops/internal/model"
 	"ai-ops/internal/repository"
+	"ai-ops/internal/ssh"
+	"ai-ops/internal/tool"
 
 	"github.com/google/uuid"
 	"go.uber.org/zap"
@@ -21,21 +19,23 @@ import (
 
 // ChatService 聊天服务
 type ChatService struct {
-	llmClient       llm.Client
-	agentServiceURL string
-	sessionRepo     repository.SessionRepository
-	httpClient      *http.Client
+	llmClient    llm.Client
+	toolRegistry *tool.Registry
+	sshPool      *ssh.Pool
+	sessionRepo  repository.SessionRepository
+	maxLoops     int
+	timeout      time.Duration
 }
 
 // NewChatService 创建聊天服务
-func NewChatService(llmClient llm.Client, agentServiceURL string, sessionRepo repository.SessionRepository) *ChatService {
+func NewChatService(llmClient llm.Client, toolRegistry *tool.Registry, sshPool *ssh.Pool, sessionRepo repository.SessionRepository) *ChatService {
 	return &ChatService{
-		llmClient:       llmClient,
-		agentServiceURL: agentServiceURL,
-		sessionRepo:     sessionRepo,
-		httpClient: &http.Client{
-			Timeout: 5 * time.Minute,
-		},
+		llmClient:    llmClient,
+		toolRegistry: toolRegistry,
+		sshPool:      sshPool,
+		sessionRepo:  sessionRepo,
+		maxLoops:     10,
+		timeout:      5 * time.Minute,
 	}
 }
 
@@ -158,122 +158,133 @@ type StreamChunk struct {
 	Status     string          `json:"status,omitempty"`
 }
 
-// callAgentService 调用 Node.js Agent Service
+// callAgentService 使用 llmClient 和 ToolRegistry 执行对话
 func (s *ChatService) callAgentService(ctx context.Context, req ChatRequest) (*ChatResponse, error) {
-	reqBody := map[string]interface{}{
-		"sessionId": req.SessionID,
-		"message":   req.Message,
-		"hosts":     req.Hosts,
-	}
-	if len(req.History) > 0 {
-		reqBody["history"] = req.History
-	}
+	ctx, cancel := context.WithTimeout(ctx, s.timeout)
+	defer cancel()
 
-	body, err := json.Marshal(reqBody)
-	if err != nil {
-		return nil, err
-	}
+	// 构建消息列表
+	messages := s.buildMessages(req)
 
-	httpReq, err := http.NewRequestWithContext(ctx, "POST", s.agentServiceURL+"/chat", bytes.NewReader(body))
-	if err != nil {
-		return nil, err
-	}
-	httpReq.Header.Set("Content-Type", "application/json")
+	// 获取工具定义
+	toolDefs := s.buildToolDefinitions()
 
-	resp, err := s.httpClient.Do(httpReq)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
+	// Agent 循环
+	var toolCallRecords []ToolCallRecord
+	var finalReply string
 
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("Agent 服务返回错误: %d - %s", resp.StatusCode, string(body))
-	}
-
-	var result struct {
-		SessionID string           `json:"sessionId"`
-		Reply     string           `json:"reply"`
-		Response  string           `json:"response"`
-		ToolCalls []ToolCallRecord `json:"toolCalls"`
-		Thinking  string           `json:"thinking"`
-	}
-
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return nil, err
-	}
-
-	// 兼容 response 和 reply 两种字段名
-	reply := result.Reply
-	if reply == "" {
-		reply = result.Response
-	}
-
-	return &ChatResponse{
-		SessionID: result.SessionID,
-		Reply:     reply,
-		ToolCalls: result.ToolCalls,
-		Thinking:  result.Thinking,
-	}, nil
-}
-
-// callAgentServiceStream 调用 Node.js Agent Service 流式接口
-func (s *ChatService) callAgentServiceStream(ctx context.Context, req ChatRequest, callback func(chunk StreamChunk)) error {
-	reqBody := map[string]interface{}{
-		"sessionId": req.SessionID,
-		"message":   req.Message,
-		"hosts":     req.Hosts,
-		"stream":    true,
-	}
-	if len(req.History) > 0 {
-		reqBody["history"] = req.History
-	}
-
-	body, err := json.Marshal(reqBody)
-	if err != nil {
-		return err
-	}
-
-	httpReq, err := http.NewRequestWithContext(ctx, "POST", s.agentServiceURL+"/chat/stream", bytes.NewReader(body))
-	if err != nil {
-		return err
-	}
-	httpReq.Header.Set("Content-Type", "application/json")
-	httpReq.Header.Set("Accept", "text/event-stream")
-
-	resp, err := s.httpClient.Do(httpReq)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("Agent 服务返回错误: %d - %s", resp.StatusCode, string(body))
-	}
-
-	reader := bufio.NewReader(resp.Body)
-	for {
-		line, err := reader.ReadBytes('\n')
+	for i := 0; i < s.maxLoops; i++ {
+		// 调用 LLM
+		resp, err := s.llmClient.ChatWithTools(ctx, messages, toolDefs)
 		if err != nil {
-			if err == io.EOF {
-				break
-			}
-			return err
+			return nil, fmt.Errorf("LLM 调用失败: %w", err)
 		}
 
-		line = bytes.TrimSpace(line)
-		if len(line) == 0 {
+		// 检查是否有工具调用
+		if resp.HasToolCalls() {
+			// 执行工具调用
+			toolResults, records := s.executeToolCalls(ctx, resp.Message.ToolCalls, req.Hosts)
+			toolCallRecords = append(toolCallRecords, records...)
+
+			// 添加助手消息（包含工具调用）
+			messages = append(messages, resp.Message)
+
+			// 添加工具结果消息
+			messages = append(messages, toolResults...)
 			continue
 		}
 
-		if bytes.HasPrefix(line, []byte("data: ")) {
-			data := bytes.TrimPrefix(line, []byte("data: "))
-			var chunk StreamChunk
-			if err := json.Unmarshal(data, &chunk); err != nil {
-				continue
+		// 没有工具调用，返回最终回复
+		finalReply = resp.Message.Content
+		break
+	}
+
+	// 如果达到最大循环次数但没有最终回复
+	if finalReply == "" && len(toolCallRecords) > 0 {
+		finalReply = "已执行相关操作，请查看工具调用结果。"
+	}
+
+	return &ChatResponse{
+		SessionID: req.SessionID,
+		Reply:     finalReply,
+		ToolCalls: toolCallRecords,
+	}, nil
+}
+
+// callAgentServiceStream 使用 llmClient 和 ToolRegistry 执行流式对话
+func (s *ChatService) callAgentServiceStream(ctx context.Context, req ChatRequest, callback func(chunk StreamChunk)) error {
+	ctx, cancel := context.WithTimeout(ctx, s.timeout)
+	defer cancel()
+
+	// 构建消息列表
+	messages := s.buildMessages(req)
+
+	// 获取工具定义
+	toolDefs := s.buildToolDefinitions()
+
+	// Agent 循环
+	for i := 0; i < s.maxLoops; i++ {
+		var contentBuffer string
+		var toolCalls []llm.ToolCall
+		done := false
+
+		// 流式调用 LLM
+		err := s.llmClient.ChatStreamWithTools(ctx, messages, toolDefs, func(chunk llm.StreamChunk) {
+			switch chunk.Type {
+			case "content":
+				contentBuffer += chunk.Content
+				callback(StreamChunk{
+					Type:    "content",
+					Content: chunk.Content,
+				})
+			case "tool_call":
+				if chunk.ToolCall != nil {
+					toolCalls = append(toolCalls, *chunk.ToolCall)
+				}
+			case "done":
+				done = true
 			}
-			callback(chunk)
+		})
+
+		if err != nil {
+			return fmt.Errorf("LLM 流式调用失败: %w", err)
+		}
+
+		// 检查是否有工具调用
+		if len(toolCalls) > 0 {
+			// 通知前端工具调用
+			for _, tc := range toolCalls {
+				callback(StreamChunk{
+					Type: "tool_call",
+					ToolCall: &ToolCallRecord{
+						ID:     tc.ID,
+						Tool:   tc.Function.Name,
+						Params: s.parseToolParams(tc.Function.Arguments),
+					},
+				})
+			}
+
+			// 执行工具
+			toolResults, records := s.executeToolCalls(ctx, toolCalls, req.Hosts)
+
+			// 通知前端工具结果
+			for _, r := range records {
+				callback(StreamChunk{
+					Type:       "tool_result",
+					ToolResult: &r,
+				})
+			}
+
+			// 添加消息继续对话
+			messages = append(messages, llm.NewAssistantToolCallMessage(toolCalls))
+			messages = append(messages, toolResults...)
+			continue
+		}
+
+		// 没有工具调用，对话结束
+		if done {
+			callback(StreamChunk{Type: "done"})
+			break
 		}
 	}
 
@@ -425,4 +436,135 @@ func (s *ChatService) GetHistory(sessionID string) ([]*model.Message, error) {
 // DeleteSession 删除会话
 func (s *ChatService) DeleteSession(sessionID string) error {
 	return s.sessionRepo.Delete(sessionID)
+}
+
+// buildMessages 构建消息列表
+func (s *ChatService) buildMessages(req ChatRequest) []llm.Message {
+	messages := make([]llm.Message, 0, len(req.History)+2)
+
+	// 系统提示词
+	systemPrompt := s.buildSystemPrompt(req.Hosts)
+	messages = append(messages, llm.NewSystemMessage(systemPrompt))
+
+	// 历史消息 - 转换类型
+	for _, msg := range req.History {
+		messages = append(messages, llm.Message{
+			Role:    msg.Role,
+			Content: msg.Content,
+		})
+	}
+
+	// 用户消息
+	messages = append(messages, llm.NewUserMessage(req.Message))
+
+	return messages
+}
+
+// buildSystemPrompt 构建系统提示词
+func (s *ChatService) buildSystemPrompt(hosts []string) string {
+	prompt := "你是一个专业的 AI 运维助手，可以帮助用户管理和操作服务器。\n\n"
+
+	if len(hosts) > 0 {
+		prompt += fmt.Sprintf("当前关联的主机: %s\n\n", strings.Join(hosts, ", "))
+	}
+
+	prompt += "你可以使用提供的工具来执行各种运维任务。请根据用户的需求选择合适的工具。\n"
+	prompt += "在执行命令前，请确保理解用户的意图，必要时向用户确认。"
+
+	return prompt
+}
+
+// buildToolDefinitions 构建工具定义
+func (s *ChatService) buildToolDefinitions() []llm.ToolDef {
+	if s.toolRegistry == nil {
+		return nil
+	}
+
+	schemas := s.toolRegistry.GenerateJSONSchema()
+	toolDefs := make([]llm.ToolDef, 0, len(schemas))
+
+	for _, schema := range schemas {
+		function, ok := schema["function"].(map[string]interface{})
+		if !ok {
+			continue
+		}
+
+		name, _ := function["name"].(string)
+		description, _ := function["description"].(string)
+		parameters, _ := function["parameters"].(map[string]interface{})
+
+		toolDefs = append(toolDefs, llm.ToolDef{
+			Type: "function",
+			Function: llm.FunctionDef{
+				Name:        name,
+				Description: description,
+				Parameters:  parameters,
+			},
+		})
+	}
+
+	return toolDefs
+}
+
+// executeToolCalls 执行工具调用
+func (s *ChatService) executeToolCalls(ctx context.Context, toolCalls []llm.ToolCall, hosts []string) ([]llm.Message, []ToolCallRecord) {
+	toolMessages := make([]llm.Message, 0, len(toolCalls))
+	records := make([]ToolCallRecord, 0, len(toolCalls))
+
+	for _, tc := range toolCalls {
+		toolName := tc.Function.Name
+		params := s.parseToolParams(tc.Function.Arguments)
+
+		// 执行工具
+		toolCtx := &tool.Context{
+			Hosts:   hosts,
+			SSH:     s.sshPool,
+			Timeout: 30 * time.Second,
+		}
+
+		result, err := s.toolRegistry.Execute(toolCtx, toolName, params)
+
+		var resultStr string
+		var errorStr string
+
+		if err != nil {
+			errorStr = err.Error()
+			resultStr = fmt.Sprintf("工具执行失败: %s", err.Error())
+		} else if result != nil {
+			if result.Success {
+				resultStr = result.Message
+				if result.Data != nil {
+					dataJSON, _ := json.Marshal(result.Data)
+					resultStr = string(dataJSON)
+				}
+			} else {
+				errorStr = result.Error
+				resultStr = fmt.Sprintf("工具执行失败: %s", result.Error)
+			}
+		}
+
+		// 添加工具结果消息
+		toolMessages = append(toolMessages, llm.NewToolMessage(tc.ID, toolName, resultStr))
+
+		// 记录工具调用
+		records = append(records, ToolCallRecord{
+			ID:     tc.ID,
+			Tool:   toolName,
+			Params: params,
+			Result: resultStr,
+			Error:  errorStr,
+		})
+	}
+
+	return toolMessages, records
+}
+
+// parseToolParams 解析工具参数
+func (s *ChatService) parseToolParams(arguments string) map[string]interface{} {
+	var params map[string]interface{}
+	if err := json.Unmarshal([]byte(arguments), &params); err != nil {
+		zap.L().Error("解析工具参数失败", zap.Error(err), zap.String("arguments", arguments))
+		return make(map[string]interface{})
+	}
+	return params
 }

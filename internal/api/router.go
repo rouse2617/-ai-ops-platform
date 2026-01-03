@@ -11,6 +11,7 @@ import (
 	"ai-ops/internal/security"
 	"ai-ops/internal/service"
 	"ai-ops/internal/ssh"
+	"ai-ops/internal/tool"
 
 	"github.com/gin-gonic/gin"
 )
@@ -18,6 +19,7 @@ import (
 // RouterConfig 路由配置
 type RouterConfig struct {
 	SSHPool      *ssh.Pool
+	ToolRegistry *tool.Registry
 	PolicyStore  *security.PolicyStore
 	AuditLogger  *security.AuditLogger
 	HostRepo     repository.HostRepository
@@ -76,7 +78,7 @@ func NewRouter(cfg RouterConfig) *gin.Engine {
 	}
 
 	// 创建 Service 层
-	chatService := service.NewChatService(llmClient, cfg.Config.Agent.ServiceURL, cfg.SessionRepo)
+	chatService := service.NewChatService(llmClient, cfg.ToolRegistry, cfg.SSHPool, cfg.SessionRepo)
 	hostService := service.NewHostService(cfg.SSHPool, cfg.HostRepo, cfg.GroupRepo, cfg.Cache)
 
 	// 创建 handlers
