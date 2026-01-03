@@ -1,10 +1,32 @@
 import { request } from './request'
 
 export interface Message {
-  role: 'user' | 'assistant' | 'system'
+  role: 'user' | 'assistant' | 'system' | 'proactive'
   content: string
   toolCalls?: ToolCall[]
   timestamp?: string | number
+  proactiveType?: string  // morning_report, anomaly_alert, health_summary, auto_fix
+  proactiveData?: ProactiveMessageData
+}
+
+export interface ProactiveMessageData {
+  id: string
+  type: string
+  title: string
+  summary?: string
+  hosts?: string[]
+  metrics?: Record<string, unknown>
+  actions?: QuickAction[]
+  priority: string
+  read?: boolean
+}
+
+export interface QuickAction {
+  id: string
+  label: string
+  command?: string
+  description?: string
+  dangerous?: boolean
 }
 
 export interface HostResult {

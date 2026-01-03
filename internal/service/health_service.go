@@ -39,10 +39,37 @@ type HealthCheckResult struct {
 	HostID      string                 `json:"host_id"`
 	HostName    string                 `json:"host_name"`
 	Status      string                 `json:"status"`
+	Score       int                    `json:"score"`        // 健康分 0-100
+	ScoreLevel  string                 `json:"score_level"`  // excellent, good, warning, critical
 	Metrics     map[string]interface{} `json:"metrics"`
 	Issues      []string               `json:"issues"`
 	Suggestions []string               `json:"suggestions"`
 	CheckedAt   time.Time              `json:"checked_at"`
+}
+
+// HostComparison 主机横向对比结果
+type HostComparison struct {
+	Hosts       []HostHealthSummary `json:"hosts"`
+	Slowest     string              `json:"slowest"`       // 响应最慢的主机
+	HighestCPU  string              `json:"highest_cpu"`   // CPU 最高的主机
+	HighestMem  string              `json:"highest_mem"`   // 内存最高的主机
+	HighestDisk string              `json:"highest_disk"`  // 磁盘最高的主机
+	Anomalies   []string            `json:"anomalies"`     // 异常主机列表
+	AvgScore    int                 `json:"avg_score"`     // 平均健康分
+	CheckedAt   time.Time           `json:"checked_at"`
+}
+
+// HostHealthSummary 主机健康摘要
+type HostHealthSummary struct {
+	HostID     string  `json:"host_id"`
+	HostName   string  `json:"host_name"`
+	Score      int     `json:"score"`
+	ScoreLevel string  `json:"score_level"`
+	CPU        float64 `json:"cpu"`
+	Memory     float64 `json:"memory"`
+	Disk       float64 `json:"disk"`
+	Status     string  `json:"status"`
+	IssueCount int     `json:"issue_count"`
 }
 
 // CheckHost 检查单个主机健康状态
@@ -99,6 +126,9 @@ func (s *HealthService) CheckHost(ctx context.Context, hostID string) (*HealthCh
 
 	// 确定整体状态
 	result.Status = s.determineStatus(result)
+
+	// 计算健康分
+	result.Score, result.ScoreLevel = s.CalculateHealthScore(result)
 
 	// 保存到数据库
 	healthCheck := &model.HealthCheck{
@@ -224,4 +254,152 @@ func (s *HealthService) determineStatus(result *HealthCheckResult) string {
 	}
 
 	return model.HealthCheckStatusWarning
+}
+
+// CalculateHealthScore 计算健康分 (0-100)
+func (s *HealthService) CalculateHealthScore(result *HealthCheckResult) (int, string) {
+	score := 100
+
+	// CPU 扣分: 50% 以上开始扣分
+	if cpu, ok := result.Metrics["cpu_usage"].(float64); ok && cpu > 50 {
+		deduction := int((cpu - 50) * 0.6)
+		score -= deduction
+	}
+
+	// 内存扣分: 60% 以上开始扣分
+	if mem, ok := result.Metrics["memory_usage"].(float64); ok && mem > 60 {
+		deduction := int((mem - 60) * 0.5)
+		score -= deduction
+	}
+
+	// 磁盘扣分: 70% 以上开始扣分
+	if disk, ok := result.Metrics["disk_usage"].(float64); ok && disk > 70 {
+		deduction := int((disk - 70) * 0.8)
+		score -= deduction
+	}
+
+	// 问题数量扣分
+	score -= len(result.Issues) * 5
+
+	// 确保分数在 0-100 范围内
+	if score < 0 {
+		score = 0
+	}
+	if score > 100 {
+		score = 100
+	}
+
+	// 确定等级
+	var level string
+	switch {
+	case score >= 90:
+		level = "excellent"
+	case score >= 75:
+		level = "good"
+	case score >= 60:
+		level = "warning"
+	default:
+		level = "critical"
+	}
+
+	return score, level
+}
+
+// CompareHosts 横向对比多个主机
+func (s *HealthService) CompareHosts(ctx context.Context, hostIDs []string) (*HostComparison, error) {
+	if len(hostIDs) == 0 {
+		// 如果没有指定主机，获取所有主机
+		hosts, err := s.hostRepo.List(repository.HostFilter{})
+		if err != nil {
+			return nil, fmt.Errorf("获取主机列表失败: %w", err)
+		}
+		for _, h := range hosts {
+			hostIDs = append(hostIDs, h.ID)
+		}
+	}
+
+	comparison := &HostComparison{
+		Hosts:     make([]HostHealthSummary, 0, len(hostIDs)),
+		Anomalies: make([]string, 0),
+		CheckedAt: time.Now(),
+	}
+
+	var (
+		maxCPU, maxMem, maxDisk float64
+		totalScore              int
+	)
+
+	for _, hostID := range hostIDs {
+		result, err := s.CheckHost(ctx, hostID)
+		if err != nil {
+			logger.Error("检查主机失败", zap.String("host_id", hostID), zap.Error(err))
+			continue
+		}
+
+		cpu, _ := result.Metrics["cpu_usage"].(float64)
+		mem, _ := result.Metrics["memory_usage"].(float64)
+		disk, _ := result.Metrics["disk_usage"].(float64)
+
+		summary := HostHealthSummary{
+			HostID:     result.HostID,
+			HostName:   result.HostName,
+			Score:      result.Score,
+			ScoreLevel: result.ScoreLevel,
+			CPU:        cpu,
+			Memory:     mem,
+			Disk:       disk,
+			Status:     result.Status,
+			IssueCount: len(result.Issues),
+		}
+		comparison.Hosts = append(comparison.Hosts, summary)
+		totalScore += result.Score
+
+		// 记录最高值
+		if cpu > maxCPU {
+			maxCPU = cpu
+			comparison.HighestCPU = result.HostName
+		}
+		if mem > maxMem {
+			maxMem = mem
+			comparison.HighestMem = result.HostName
+		}
+		if disk > maxDisk {
+			maxDisk = disk
+			comparison.HighestDisk = result.HostName
+		}
+
+		// 检测异常主机
+		if result.Status == model.HealthCheckStatusCritical || result.Score < 60 {
+			comparison.Anomalies = append(comparison.Anomalies, result.HostName)
+		}
+	}
+
+	if len(comparison.Hosts) > 0 {
+		comparison.AvgScore = totalScore / len(comparison.Hosts)
+	}
+
+	return comparison, nil
+}
+
+// GetOverallHealthScore 获取整体健康分
+func (s *HealthService) GetOverallHealthScore(ctx context.Context) (int, string, error) {
+	comparison, err := s.CompareHosts(ctx, nil)
+	if err != nil {
+		return 0, "", err
+	}
+
+	score := comparison.AvgScore
+	var level string
+	switch {
+	case score >= 90:
+		level = "excellent"
+	case score >= 75:
+		level = "good"
+	case score >= 60:
+		level = "warning"
+	default:
+		level = "critical"
+	}
+
+	return score, level, nil
 }

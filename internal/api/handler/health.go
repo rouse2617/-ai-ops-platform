@@ -75,16 +75,55 @@ func (h *HealthHandler) GetHealthHistory(c *gin.Context) {
 	})
 }
 
+// CompareHosts 横向对比多个主机
+// POST /api/health/compare
+func (h *HealthHandler) CompareHosts(c *gin.Context) {
+	var req struct {
+		HostIDs []string `json:"host_ids"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		ParamError(c, "参数错误: "+err.Error())
+		return
+	}
+
+	comparison, err := h.healthService.CompareHosts(c.Request.Context(), req.HostIDs)
+	if err != nil {
+		InternalError(c, "主机对比失败: "+err.Error())
+		return
+	}
+
+	Success(c, comparison)
+}
+
+// GetOverallHealth 获取整体健康分
+// GET /api/health/overall
+func (h *HealthHandler) GetOverallHealth(c *gin.Context) {
+	score, level, err := h.healthService.GetOverallHealthScore(c.Request.Context())
+	if err != nil {
+		InternalError(c, "获取整体健康分失败: "+err.Error())
+		return
+	}
+
+	Success(c, gin.H{
+		"score": score,
+		"level": level,
+	})
+}
+
 // generateSummary 生成摘要
 func (h *HealthHandler) generateSummary(results map[string]*service.HealthCheckResult) map[string]interface{} {
+	var totalScore int
 	summary := map[string]interface{}{
-		"total":    len(results),
-		"healthy":  0,
-		"warning":  0,
-		"critical": 0,
+		"total":     len(results),
+		"healthy":   0,
+		"warning":   0,
+		"critical":  0,
+		"avg_score": 0,
 	}
 
 	for _, result := range results {
+		totalScore += result.Score
 		switch result.Status {
 		case "healthy":
 			summary["healthy"] = summary["healthy"].(int) + 1
@@ -93,6 +132,10 @@ func (h *HealthHandler) generateSummary(results map[string]*service.HealthCheckR
 		case "critical":
 			summary["critical"] = summary["critical"].(int) + 1
 		}
+	}
+
+	if len(results) > 0 {
+		summary["avg_score"] = totalScore / len(results)
 	}
 
 	return summary

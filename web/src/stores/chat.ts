@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { ElNotification } from 'element-plus'
-import type { Message, ToolCall, ThinkingStatus, StreamEventType } from '@/api/chat'
+import type { Message, ToolCall, ThinkingStatus, StreamEventType, ProactiveMessageData } from '@/api/chat'
 import { fetchStreamChat, getChatHistory, getSessions, createSession, deleteSession, updateSessionHosts } from '@/api/chat'
 import { useSystemStore } from './system'
 
@@ -570,6 +570,18 @@ export const useChatStore = defineStore('chat', () => {
     showSuggestions.value = show !== undefined ? show : !showSuggestions.value
   }
 
+  // 注入主动消息到聊天流
+  function injectProactiveMessage(proactiveData: ProactiveMessageData) {
+    const message: Message = {
+      role: 'proactive',
+      content: proactiveData.content || '',
+      timestamp: proactiveData.created_at || Date.now(),
+      proactiveType: proactiveData.type,
+      proactiveData: proactiveData
+    }
+    messages.value.push(message)
+  }
+
   // 更新会话健康状态
   function updateSessionHealth() {
     const metrics = sessionMetrics.value.get(currentSessionId.value)
@@ -625,7 +637,8 @@ export const useChatStore = defineStore('chat', () => {
     clearMessageCache,
     getSuggestions,
     selectSuggestion,
-    toggleSuggestions
+    toggleSuggestions,
+    injectProactiveMessage
   }
 }, {
   persist: {
