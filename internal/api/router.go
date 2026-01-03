@@ -7,6 +7,7 @@ import (
 	"ai-ops/internal/cache"
 	"ai-ops/internal/config"
 	"ai-ops/internal/llm"
+	"ai-ops/internal/monitor"
 	"ai-ops/internal/repository"
 	"ai-ops/internal/security"
 	"ai-ops/internal/service"
@@ -18,20 +19,27 @@ import (
 
 // RouterConfig 路由配置
 type RouterConfig struct {
-	SSHPool      *ssh.Pool
-	ToolRegistry *tool.Registry
-	PolicyStore  *security.PolicyStore
-	AuditLogger  *security.AuditLogger
-	HostRepo     repository.HostRepository
-	SessionRepo  repository.SessionRepository
-	GroupRepo    repository.GroupRepository
-	ConfigRepo   repository.ConfigRepository
-	AnalysisRepo repository.AnalysisRepository
-	LLMClient    *llm.OpenAIClient
-	Cache        cache.Cache // 可选的缓存
-	Version      string
-	Mode         string // debug / release
-	Config       *config.Config
+	SSHPool         *ssh.Pool
+	ToolRegistry    *tool.Registry
+	PolicyStore     *security.PolicyStore
+	AuditLogger     *security.AuditLogger
+	HostRepo        repository.HostRepository
+	SessionRepo     repository.SessionRepository
+	GroupRepo       repository.GroupRepository
+	ConfigRepo      repository.ConfigRepository
+	AnalysisRepo    repository.AnalysisRepository
+	HealthRepo      *repository.HealthCheckRepository
+	TrendRepo       *repository.TrendPredictionRepository
+	LLMClient       *llm.OpenAIClient
+	Cache           cache.Cache // 可选的缓存
+	Version         string
+	Mode            string // debug / release
+	Config          *config.Config
+	MonitorDetector  *monitor.AnomalyDetector
+	MonitorNotifier  *monitor.AlertNotifier
+	MonitorScheduler *monitor.MonitorScheduler
+	MonitorHandler   *handler.MonitorHandler
+	PrometheusAddr   string // Prometheus 服务地址
 }
 
 // NewRouter 创建路由
@@ -81,12 +89,29 @@ func NewRouter(cfg RouterConfig) *gin.Engine {
 	chatService := service.NewChatService(llmClient, cfg.ToolRegistry, cfg.SSHPool, cfg.SessionRepo)
 	hostService := service.NewHostService(cfg.SSHPool, cfg.HostRepo, cfg.GroupRepo, cfg.Cache)
 
+	var healthService *service.HealthService
+	var trendService *service.TrendService
+	if cfg.HealthRepo != nil && cfg.TrendRepo != nil {
+		healthService = service.NewHealthService(cfg.SSHPool, cfg.HostRepo, cfg.HealthRepo)
+		trendService = service.NewTrendService(cfg.SSHPool, cfg.HostRepo, cfg.TrendRepo, cfg.HealthRepo)
+	}
+
 	// 创建 handlers
 	chatHandler := handler.NewChatHandler(chatService)
 	hostHandler := handler.NewHostHandler(hostService)
 	systemHandler := handler.NewSystemHandler(cfg.Version, cfg.PolicyStore, cfg.AuditLogger, cfg.ConfigRepo)
 	analysisHandler := handler.NewAnalysisHandler(cfg.LLMClient, cfg.AnalysisRepo)
 	internalSSHHandler := handler.NewInternalSSHHandler(cfg.SSHPool, cfg.HostRepo)
+	slotFillingHandler := handler.NewSlotFillingHandler()
+	operationsHandler := handler.NewOperationsHandler(cfg.ToolRegistry, cfg.SSHPool)
+	toolHandler := handler.NewToolHandler(cfg.ToolRegistry, cfg.SSHPool, cfg.ConfigRepo)
+
+	var healthHandler *handler.HealthHandler
+	var trendHandler *handler.TrendHandler
+	if healthService != nil && trendService != nil {
+		healthHandler = handler.NewHealthHandler(healthService)
+		trendHandler = handler.NewTrendHandler(trendService)
+	}
 
 	// API 路由组
 	api := r.Group("/api")
@@ -124,6 +149,7 @@ func NewRouter(cfg RouterConfig) *gin.Engine {
 				chat.POST("/sessions", chatHandler.CreateSession)
 				chat.GET("/history/:session_id", chatHandler.GetHistory)
 				chat.DELETE("/sessions/:id", chatHandler.DeleteSession)
+				chat.PUT("/sessions/:id/hosts", chatHandler.UpdateSessionHosts)
 			}
 
 			// 主机管理 API
@@ -163,9 +189,83 @@ func NewRouter(cfg RouterConfig) *gin.Engine {
 			analysis := protected.Group("/analysis")
 			{
 				analysis.POST("/analyze", analysisHandler.Analyze)
+				analysis.POST("/semantic", analysisHandler.GetSemanticInsight)
+				analysis.POST("/suggest-actions", analysisHandler.GetSuggestedActions)
+				analysis.POST("/correlation", analysisHandler.GetHistoricalCorrelation)
 				analysis.GET("/history", analysisHandler.GetHistory)
 				analysis.GET("/:id", analysisHandler.GetAnalysis)
 				analysis.DELETE("/:id", analysisHandler.DeleteAnalysis)
+			}
+
+			// 参数补全 API
+			slotFilling := protected.Group("/slot-filling")
+			{
+				slotFilling.POST("/analyze", slotFillingHandler.AnalyzeMessage)
+			}
+
+			// 批量操作 API
+			operations := protected.Group("/operations")
+			{
+				operations.POST("/batch-execute", operationsHandler.BatchExecute)
+			}
+
+			// 工具管理 API
+			tools := protected.Group("/tools")
+			{
+				tools.GET("", toolHandler.ListTools)
+				tools.GET("/builtin", toolHandler.ListBuiltinTools)
+				tools.GET("/script", toolHandler.ListScriptTools)
+				tools.GET("/:name", toolHandler.GetTool)
+				tools.PUT("/:name/toggle", toolHandler.ToggleTool)
+				tools.POST("/:name/execute", toolHandler.ExecuteTool)
+			}
+
+			// 监控告警 API（如果已配置）
+			if cfg.MonitorDetector != nil && cfg.MonitorNotifier != nil && cfg.MonitorScheduler != nil {
+				monitorHandler := handler.NewMonitorHandler(cfg.MonitorDetector, cfg.MonitorNotifier, cfg.MonitorScheduler)
+				monitorGroup := protected.Group("/monitor")
+				{
+					monitorGroup.GET("/ws", monitorHandler.WebSocketHandler)
+					monitorGroup.POST("/rules", monitorHandler.AddAlertRule)
+					monitorGroup.GET("/rules", monitorHandler.GetAlertRules)
+					monitorGroup.POST("/hosts", monitorHandler.UpdateMonitorHosts)
+					monitorGroup.POST("/check", monitorHandler.TriggerCheck)
+				}
+			}
+
+			// Prometheus 集成 API（如果已配置）
+			if cfg.PrometheusAddr != "" {
+				promHandler, err := handler.NewPrometheusHandler(cfg.PrometheusAddr)
+				if err == nil {
+					promGroup := protected.Group("/prometheus")
+					{
+						promGroup.POST("/incident-replay", promHandler.QueryIncidentMetrics)
+						promGroup.POST("/capacity-planning", promHandler.AnalyzeCapacityPlanning)
+						promGroup.POST("/query", promHandler.QueryPrometheus)
+						promGroup.GET("/metrics", promHandler.GetMetricsMetadata)
+						promGroup.GET("/labels/:label", promHandler.GetLabelValues)
+					}
+				}
+			}
+
+			// 健康检查 API（如果已配置）
+			if healthHandler != nil {
+				healthGroup := protected.Group("/health")
+				{
+					healthGroup.POST("/check", healthHandler.CheckHost)
+					healthGroup.POST("/daily-report", healthHandler.DailyHealthCheck)
+					healthGroup.GET("/reports", healthHandler.GetHealthHistory)
+				}
+			}
+
+			// 趋势分析 API（如果已配置）
+			if trendHandler != nil {
+				trendGroup := protected.Group("/trends")
+				{
+					trendGroup.POST("/analyze", trendHandler.AnalyzeTrends)
+					trendGroup.GET("/predictions", trendHandler.GetPredictions)
+					trendGroup.GET("/alerts", trendHandler.GetAlerts)
+				}
 			}
 		}
 

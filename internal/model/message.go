@@ -8,6 +8,7 @@ import (
 type Message struct {
 	ID        string     `json:"id" gorm:"primaryKey"`
 	SessionID string     `json:"session_id" gorm:"index;not null"`
+	HostID    string     `json:"host_id" gorm:"index"`
 	Role      string     `json:"role"`
 	Content   string     `json:"content" gorm:"type:text"`
 	ToolCalls []ToolCall `json:"tool_calls" gorm:"serializer:json"`

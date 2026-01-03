@@ -1,0 +1,78 @@
+# Code Change Correlation Configuration
+
+# Git repositories to track
+repositories:
+  - name: "backend-api"
+    path: "/path/to/backend-api"
+    enabled: true
+
+  - name: "frontend-web"
+    path: "/path/to/frontend-web"
+    enabled: true
+
+  - name: "data-pipeline"
+    path: "/path/to/data-pipeline"
+    enabled: true
+
+# Service to code mapping
+service_mappings:
+  - service_name: "api-gateway"
+    repositories:
+      - "backend-api"
+    code_paths:
+      - "src/gateway/**"
+      - "src/middleware/**"
+    keywords:
+      - "gateway"
+      - "routing"
+      - "proxy"
+
+  - service_name: "user-service"
+    repositories:
+      - "backend-api"
+    code_paths:
+      - "src/services/user/**"
+      - "src/models/user.go"
+    keywords:
+      - "user"
+      - "auth"
+      - "login"
+
+  - service_name: "database"
+    repositories:
+      - "backend-api"
+      - "data-pipeline"
+    code_paths:
+      - "**/*db*.py"
+      - "**/*query*.go"
+      - "migrations/**"
+    keywords:
+      - "database"
+      - "query"
+      - "sql"
+      - "migration"
+
+# Correlation settings
+correlation:
+  # Time window to search for commits (minutes)
+  time_window_minutes: 30
+
+  # Minimum correlation score to trigger notification (0.0-1.0)
+  min_score_threshold: 0.3
+
+  # Maximum number of suspicious files to show
+  max_suspicious_files: 5
+
+  # Maximum number of commits to analyze
+  max_commits: 10
+
+# Notification settings
+notification:
+  # Enable code correlation notifications
+  enabled: true
+
+  # Auto-dismiss after seconds (0 = manual dismiss only)
+  auto_dismiss_seconds: 0
+
+  # Show diff preview in notification
+  show_diff_preview: false

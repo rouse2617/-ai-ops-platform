@@ -24,7 +24,7 @@
       <pre><code>{{ displayedOutput }}</code></pre>
     </div>
 
-    <div v-if="totalLines > previewLines" class="output-footer">
+    <div v-if="totalLines > 50" class="output-footer">
       <el-button text @click="expanded = !expanded">
         <el-icon><ArrowDown :class="{ expanded }" /></el-icon>
         {{ expanded ? '收起' : `展开全部 (共 ${totalLines} 行)` }}
@@ -42,12 +42,9 @@ interface Props {
   output: string
   exitCode: number
   duration: number
-  previewLines?: number
 }
 
-const props = withDefaults(defineProps<Props>(), {
-  previewLines: 5
-})
+const props = defineProps<Props>()
 
 const expanded = ref(false)
 
@@ -56,10 +53,13 @@ const totalLines = computed(() => lines.value.length)
 const outputSize = computed(() => new Blob([props.output]).size)
 
 const displayedOutput = computed(() => {
-  if (expanded.value || totalLines.value <= props.previewLines) {
+  if (expanded.value || totalLines.value <= 50) {
     return props.output
   }
-  return lines.value.slice(0, props.previewLines).join('\n') + '\n...'
+  const firstLines = lines.value.slice(0, 10).join('\n')
+  const lastLines = lines.value.slice(-10).join('\n')
+  const omittedCount = totalLines.value - 20
+  return `${firstLines}\n\n... 省略 ${omittedCount} 行 ...\n\n${lastLines}`
 })
 
 const formatSize = (bytes: number): string => {

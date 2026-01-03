@@ -1,4 +1,4 @@
-package main
+package main // test_sqlite_performance
 
 import (
 	"fmt"

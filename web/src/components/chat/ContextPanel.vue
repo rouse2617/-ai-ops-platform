@@ -1,133 +1,186 @@
 <template>
   <div class="context-panel" :class="{ 'dark-mode': isDark }">
-    <!-- Header with Silent Mode Toggle -->
+    <!-- Header with View Tabs -->
     <div class="panel-header">
-      <span class="panel-title">Context Monitor</span>
+      <el-tabs v-model="activeView" class="panel-tabs">
+        <el-tab-pane label="监控" name="monitor">
+          <template #label>
+            <span class="tab-label">
+              <el-icon><Monitor /></el-icon>
+              监控
+            </span>
+          </template>
+        </el-tab-pane>
+        <el-tab-pane label="日志" name="logs">
+          <template #label>
+            <span class="tab-label">
+              <el-icon><Document /></el-icon>
+              日志
+            </span>
+          </template>
+        </el-tab-pane>
+        <el-tab-pane label="文件" name="files">
+          <template #label>
+            <span class="tab-label">
+              <el-icon><Folder /></el-icon>
+              文件
+            </span>
+          </template>
+        </el-tab-pane>
+      </el-tabs>
       <el-switch
         v-model="localSilentMode"
         @change="handleSilentModeToggle"
-        active-text="Silent"
-        inactive-text="Alert"
+        active-text="静默"
         :active-icon="MuteNotification"
         :inactive-icon="Bell"
         size="small"
       />
     </div>
 
-    <!-- Host Metrics Section (max 5 hosts) -->
-    <div
-      v-for="host in displayHosts"
-      :key="host.hostId"
-      class="host-metrics"
-      :class="{ 'pulse-warning': isAbnormal(host), 'expanded': isAbnormal(host) || isExpanded(host.hostId) }"
-    >
-      <div class="host-header" @click="toggleExpand(host.hostId)">
-        <span class="host-name">{{ host.hostName }}</span>
-        <div class="host-status">
-          <el-tag
-            :type="getStatusType(host)"
-            size="small"
-            effect="dark"
-          >
-            {{ host.status }}
-          </el-tag>
-        </div>
-      </div>
-
-      <transition name="expand">
-        <div v-show="isAbnormal(host) || isExpanded(host.hostId)" class="metrics-details">
-          <!-- CPU Usage -->
-          <div class="metric-item">
-            <div class="metric-label">CPU Usage</div>
-            <div class="metric-value">
-              <el-progress
-                :percentage="host.cpu"
-                :status="getProgressStatus(host.cpu)"
-                :show-text="true"
-                :stroke-width="8"
-              />
-            </div>
-          </div>
-
-          <!-- Memory Usage -->
-          <div class="metric-item">
-            <div class="metric-label">Memory Usage</div>
-            <div class="metric-value">
-              <el-progress
-                :percentage="host.memory"
-                :status="getProgressStatus(host.memory)"
-                :show-text="true"
-                :stroke-width="8"
-              />
-            </div>
-          </div>
-
-          <!-- Disk Usage -->
-          <div class="metric-item">
-            <div class="metric-label">Disk Usage</div>
-            <div class="metric-value">
-              <el-progress
-                :percentage="host.disk"
-                :status="getProgressStatus(host.disk)"
-                :show-text="true"
-                :stroke-width="8"
-              />
-            </div>
-          </div>
-
-          <!-- Alert Threshold Indicator -->
-          <div v-if="isAbnormal(host)" class="alert-indicator">
-            <el-alert
-              :title="getAlertMessage(host)"
-              type="warning"
-              :closable="false"
-              show-icon
-            />
-          </div>
-
-          <!-- Last Updated -->
-          <div class="last-updated">
-            <span class="update-label">Last updated:</span>
-            <span class="update-time">{{ formatTimestamp(host.lastUpdated) }}</span>
-          </div>
-        </div>
-      </transition>
-    </div>
-
-    <!-- Related Files Section (max 3 files, AI mentions, clickable preview) -->
-    <div v-if="displayRelatedFiles.length > 0" class="related-files">
-      <div class="section-title">Related Files ({{ displayRelatedFiles.length }})</div>
-      <div class="files-list">
+    <!-- View Content -->
+    <div class="panel-content">
+      <!-- Monitor View -->
+      <div v-show="activeView === 'monitor'" class="view-container">
         <div
-          v-for="file in displayRelatedFiles"
-          :key="file.path"
-          class="file-item"
-          :class="{ 'has-highlights': file.highlightLines && file.highlightLines.length > 0 }"
-          @click="handleFileClick(file)"
-          title="Click to preview file"
+          v-for="host in displayHosts"
+          :key="host.hostId"
+          class="host-metrics"
+          :class="{ 'pulse-warning': isAbnormal(host), 'expanded': isAbnormal(host) || isExpanded(host.hostId) }"
         >
-          <el-icon><Document /></el-icon>
-          <div class="file-info">
-            <span class="file-path">{{ file.path }}</span>
-            <span v-if="file.highlightLines && file.highlightLines.length > 0" class="highlight-info">
-              Lines: {{ file.highlightLines.join(', ') }}
-            </span>
+          <div class="host-header" @click="toggleExpand(host.hostId)">
+            <span class="host-name">{{ host.hostName }}</span>
+            <div class="host-status">
+              <el-tag :type="getStatusType(host)" size="small" effect="dark">
+                {{ host.status }}
+              </el-tag>
+            </div>
           </div>
-          <el-icon class="arrow-icon"><ArrowRight /></el-icon>
+
+          <transition name="expand">
+            <div v-show="isAbnormal(host) || isExpanded(host.hostId)" class="metrics-details">
+              <div class="metric-item">
+                <div class="metric-label">CPU Usage</div>
+                <div class="metric-value">
+                  <el-progress
+                    :percentage="host.cpu"
+                    :status="getProgressStatus(host.cpu)"
+                    :show-text="true"
+                    :stroke-width="8"
+                  />
+                </div>
+              </div>
+
+              <div class="metric-item">
+                <div class="metric-label">Memory Usage</div>
+                <div class="metric-value">
+                  <el-progress
+                    :percentage="host.memory"
+                    :status="getProgressStatus(host.memory)"
+                    :show-text="true"
+                    :stroke-width="8"
+                  />
+                </div>
+              </div>
+
+              <div class="metric-item">
+                <div class="metric-label">Disk Usage</div>
+                <div class="metric-value">
+                  <el-progress
+                    :percentage="host.disk"
+                    :status="getProgressStatus(host.disk)"
+                    :show-text="true"
+                    :stroke-width="8"
+                  />
+                </div>
+              </div>
+
+              <div v-if="isAbnormal(host)" class="alert-indicator">
+                <el-alert
+                  :title="getAlertMessage(host)"
+                  type="warning"
+                  :closable="false"
+                  show-icon
+                />
+              </div>
+
+              <div class="last-updated">
+                <span class="update-label">Last updated:</span>
+                <span class="update-time">{{ formatTimestamp(host.lastUpdated) }}</span>
+              </div>
+            </div>
+          </transition>
+        </div>
+
+        <div v-if="displayHosts.length === 0" class="empty-state">
+          <el-empty description="No monitoring data available" :image-size="80" />
         </div>
       </div>
-    </div>
 
-    <!-- Empty State -->
-    <div v-if="displayHosts.length === 0 && displayRelatedFiles.length === 0" class="empty-state">
-      <el-empty description="No monitoring data available" :image-size="80" />
+      <!-- Logs View -->
+      <div v-show="activeView === 'logs'" class="view-container">
+        <div class="logs-container">
+          <div class="logs-header">
+            <el-select v-model="logLevel" size="small" placeholder="日志级别">
+              <el-option label="全部" value="all" />
+              <el-option label="错误" value="error" />
+              <el-option label="警告" value="warning" />
+              <el-option label="信息" value="info" />
+            </el-select>
+          </div>
+          <div class="logs-list">
+            <div
+              v-for="(log, index) in filteredLogs"
+              :key="index"
+              class="log-item"
+              :class="`log-${log.level}`"
+            >
+              <span class="log-time">{{ log.time }}</span>
+              <el-tag :type="getLogTagType(log.level)" size="small">{{ log.level }}</el-tag>
+              <span class="log-message">{{ log.message }}</span>
+            </div>
+          </div>
+          <div v-if="filteredLogs.length === 0" class="empty-state">
+            <el-empty description="暂无日志数据" :image-size="80" />
+          </div>
+        </div>
+      </div>
+
+      <!-- Files View -->
+      <div v-show="activeView === 'files'" class="view-container">
+        <div v-if="displayRelatedFiles.length > 0" class="related-files">
+          <div class="section-title">Related Files ({{ displayRelatedFiles.length }})</div>
+          <div class="files-list">
+            <div
+              v-for="file in displayRelatedFiles"
+              :key="file.path"
+              class="file-item"
+              :class="{ 'has-highlights': file.highlightLines && file.highlightLines.length > 0 }"
+              @click="handleFileClick(file)"
+              title="Click to preview file"
+            >
+              <el-icon><Document /></el-icon>
+              <div class="file-info">
+                <span class="file-path">{{ file.path }}</span>
+                <span v-if="file.highlightLines && file.highlightLines.length > 0" class="highlight-info">
+                  Lines: {{ file.highlightLines.join(', ') }}
+                </span>
+              </div>
+              <el-icon class="arrow-icon"><ArrowRight /></el-icon>
+            </div>
+          </div>
+        </div>
+        <div v-else class="empty-state">
+          <el-empty description="暂无相关文件" :image-size="80" />
+        </div>
+      </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
-import { Bell, MuteNotification, Document, ArrowRight } from '@element-plus/icons-vue'
+import { Bell, MuteNotification, Document, ArrowRight, Monitor, Folder } from '@element-plus/icons-vue'
 import type { HostMetrics, FileReference } from '@/types/chat-ui'
 import { useMetricsStore } from '@/stores/metrics'
 
@@ -137,13 +190,15 @@ interface Props {
   relatedFiles?: FileReference[]
   silentMode?: boolean
   maxHosts?: number
+  userMessage?: string
 }
 
 const props = withDefaults(defineProps<Props>(), {
   hosts: () => [],
   relatedFiles: () => [],
   silentMode: false,
-  maxHosts: 5
+  maxHosts: 5,
+  userMessage: ''
 })
 
 // Emits
@@ -158,13 +213,22 @@ const metricsStore = useMetricsStore()
 // Local state
 const localSilentMode = ref(props.silentMode)
 const expandedHosts = ref<Set<string>>(new Set())
+const activeView = ref<'monitor' | 'logs' | 'files'>('monitor')
+const logLevel = ref('all')
+
+// Mock logs data
+const mockLogs = ref([
+  { time: '10:23:45', level: 'error', message: 'Connection timeout to database' },
+  { time: '10:22:30', level: 'warning', message: 'High memory usage detected' },
+  { time: '10:21:15', level: 'info', message: 'Service started successfully' },
+  { time: '10:20:00', level: 'error', message: 'Failed to load configuration file' }
+])
 
 // Computed
 const isDark = computed(() => {
   return document.documentElement.classList.contains('dark')
 })
 
-// Use metrics store data with fallback to props
 const displayHosts = computed(() => {
   const hostsToDisplay = metricsStore.hostList.length > 0
     ? metricsStore.hostList
@@ -174,13 +238,51 @@ const displayHosts = computed(() => {
 })
 
 const displayRelatedFiles = computed(() => {
-  // Limit to 3 files max as per requirements
   return props.relatedFiles.slice(0, 3)
 })
+
+const filteredLogs = computed(() => {
+  if (logLevel.value === 'all') return mockLogs.value
+  return mockLogs.value.filter(log => log.level === logLevel.value)
+})
+
+// Intent recognition - auto switch view based on keywords
+const detectIntent = (message: string) => {
+  const lowerMsg = message.toLowerCase()
+
+  // Log keywords
+  if (lowerMsg.includes('报错') || lowerMsg.includes('错误') || lowerMsg.includes('error') ||
+      lowerMsg.includes('日志') || lowerMsg.includes('log')) {
+    activeView.value = 'logs'
+    return
+  }
+
+  // Monitor keywords
+  if (lowerMsg.includes('cpu') || lowerMsg.includes('内存') || lowerMsg.includes('memory') ||
+      lowerMsg.includes('磁盘') || lowerMsg.includes('disk') || lowerMsg.includes('监控') ||
+      lowerMsg.includes('性能') || lowerMsg.includes('为什么高')) {
+    activeView.value = 'monitor'
+    return
+  }
+
+  // File keywords
+  if (lowerMsg.includes('文件') || lowerMsg.includes('file') || lowerMsg.includes('代码') ||
+      lowerMsg.includes('配置')) {
+    activeView.value = 'files'
+    return
+  }
+}
 
 // Watch for prop changes
 watch(() => props.silentMode, (newValue) => {
   localSilentMode.value = newValue
+})
+
+// Watch user message for intent detection
+watch(() => props.userMessage, (newMessage) => {
+  if (newMessage) {
+    detectIntent(newMessage)
+  }
 })
 
 // Methods
@@ -193,7 +295,6 @@ const handleFileClick = (file: FileReference) => {
 }
 
 const isAbnormal = (host: HostMetrics): boolean => {
-  // Check thresholds: CPU > 80%, Memory > 85%
   return (
     host.cpu > 80 ||
     host.memory > 85 ||
@@ -203,7 +304,6 @@ const isAbnormal = (host: HostMetrics): boolean => {
 }
 
 const getStatusType = (host: HostMetrics): 'success' | 'warning' | 'danger' | 'info' => {
-  // Determine status based on thresholds
   if (host.cpu > 80 || host.memory > 85 || host.status === 'critical') {
     return 'danger'
   }
@@ -227,19 +327,25 @@ const getProgressStatus = (percentage: number): 'success' | 'exception' | 'warni
 
 const getAlertMessage = (host: HostMetrics): string => {
   const alerts: string[] = []
-  // CPU threshold: > 80%
   if (host.cpu > 80) {
     alerts.push(`CPU usage is ${host.cpu.toFixed(1)}%`)
   }
-  // Memory threshold: > 85%
   if (host.memory > 85) {
     alerts.push(`Memory usage is ${host.memory.toFixed(1)}%`)
   }
-  // Disk threshold: > 90%
   if (host.disk > 90) {
     alerts.push(`Disk usage is ${host.disk.toFixed(1)}%`)
   }
   return alerts.join('; ')
+}
+
+const getLogTagType = (level: string): 'success' | 'warning' | 'danger' | 'info' => {
+  switch (level) {
+    case 'error': return 'danger'
+    case 'warning': return 'warning'
+    case 'info': return 'info'
+    default: return 'info'
+  }
 }
 
 const isExpanded = (hostId: string): boolean => {
@@ -280,7 +386,6 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
-  // Unsubscribe from all hosts
   props.hosts.forEach(host => {
     metricsStore.unsubscribe(host.hostId)
   })
@@ -293,9 +398,11 @@ onUnmounted(() => {
   border-radius: 8px;
   padding: 16px;
   height: 100%;
-  overflow-y: auto;
+  overflow: hidden;
   border: 1px solid var(--el-border-color);
   transition: all 0.3s ease;
+  display: flex;
+  flex-direction: column;
 
   &.dark-mode {
     background: #1a1a1a;
@@ -310,12 +417,36 @@ onUnmounted(() => {
   margin-bottom: 16px;
   padding-bottom: 12px;
   border-bottom: 1px solid var(--el-border-color);
+  flex-shrink: 0;
 }
 
-.panel-title {
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--el-text-color-primary);
+.panel-tabs {
+  flex: 1;
+
+  :deep(.el-tabs__header) {
+    margin: 0;
+  }
+
+  :deep(.el-tabs__nav-wrap::after) {
+    display: none;
+  }
+}
+
+.tab-label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 13px;
+}
+
+.panel-content {
+  flex: 1;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.view-container {
+  height: 100%;
 }
 
 .host-metrics {
@@ -367,12 +498,6 @@ onUnmounted(() => {
   color: var(--el-text-color-primary);
 }
 
-.host-status {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
 .expand-enter-active,
 .expand-leave-active {
   transition: all 0.3s ease;
@@ -407,29 +532,6 @@ onUnmounted(() => {
   margin-bottom: 6px;
 }
 
-.metric-value {
-  :deep(.el-progress) {
-    .el-progress__text {
-      font-size: 12px !important;
-    }
-  }
-}
-
-.network-metrics {
-  .metric-value {
-    display: flex;
-    gap: 16px;
-    font-size: 12px;
-    color: var(--el-text-color-regular);
-  }
-}
-
-.network-stat {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-
 .last-updated {
   margin-top: 12px;
   padding-top: 12px;
@@ -438,14 +540,6 @@ onUnmounted(() => {
   color: var(--el-text-color-secondary);
   display: flex;
   justify-content: space-between;
-}
-
-.update-label {
-  font-weight: 500;
-}
-
-.update-time {
-  color: var(--el-text-color-placeholder);
 }
 
 .alert-indicator {
@@ -462,10 +556,62 @@ onUnmounted(() => {
   }
 }
 
+// Logs View
+.logs-container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.logs-header {
+  margin-bottom: 12px;
+}
+
+.logs-list {
+  flex: 1;
+  overflow-y: auto;
+}
+
+.log-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  margin-bottom: 8px;
+  background: var(--el-fill-color-light);
+  border-radius: 4px;
+  font-size: 12px;
+  border-left: 3px solid transparent;
+
+  &.log-error {
+    border-left-color: var(--el-color-danger);
+  }
+
+  &.log-warning {
+    border-left-color: var(--el-color-warning);
+  }
+
+  &.log-info {
+    border-left-color: var(--el-color-info);
+  }
+}
+
+.log-time {
+  color: var(--el-text-color-secondary);
+  font-family: monospace;
+  flex-shrink: 0;
+}
+
+.log-message {
+  flex: 1;
+  color: var(--el-text-color-regular);
+}
+
+// Files View
 .related-files {
-  margin-top: 16px;
-  padding-top: 16px;
-  border-top: 1px solid var(--el-border-color);
+  margin-top: 0;
+  padding-top: 0;
+  border-top: none;
 }
 
 .section-title {
@@ -540,7 +686,7 @@ onUnmounted(() => {
   min-height: 200px;
 }
 
-// Dark mode specific styles
+// Dark mode
 .dark-mode {
   .host-header {
     background: #2a2a2a;
@@ -554,33 +700,31 @@ onUnmounted(() => {
     background: #1a1a1a;
   }
 
-  .file-item {
+  .file-item, .log-item {
     background: #2a2a2a;
 
     &:hover {
       background: #333;
     }
   }
-
-  .alert-indicator {
-    border-top-color: #333;
-  }
-
-  .last-updated {
-    border-top-color: #333;
-  }
 }
 
-// Scrollbar styling
-.context-panel::-webkit-scrollbar {
+// Scrollbar
+.context-panel::-webkit-scrollbar,
+.panel-content::-webkit-scrollbar,
+.logs-list::-webkit-scrollbar {
   width: 6px;
 }
 
-.context-panel::-webkit-scrollbar-track {
+.context-panel::-webkit-scrollbar-track,
+.panel-content::-webkit-scrollbar-track,
+.logs-list::-webkit-scrollbar-track {
   background: transparent;
 }
 
-.context-panel::-webkit-scrollbar-thumb {
+.context-panel::-webkit-scrollbar-thumb,
+.panel-content::-webkit-scrollbar-thumb,
+.logs-list::-webkit-scrollbar-thumb {
   background: var(--el-border-color-darker);
   border-radius: 3px;
 

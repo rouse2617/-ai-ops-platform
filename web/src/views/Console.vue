@@ -24,6 +24,16 @@
           <span class="stat-value offline">{{ offlineCount }}</span>
         </div>
       </div>
+
+      <!-- 移动端右侧面板切换按钮 -->
+      <el-button
+        v-if="isMobile"
+        :icon="rightPanelVisible ? 'Hide' : 'View'"
+        @click="rightPanelVisible = !rightPanelVisible"
+        class="mobile-panel-toggle"
+      >
+        {{ rightPanelVisible ? '隐藏' : '显示' }}结果
+      </el-button>
     </div>
 
     <!-- 可调整大小的面板 -->
@@ -32,6 +42,7 @@
       :min-left-width="280"
       :max-left-width="600"
       height="calc(100vh - 200px)"
+      :responsive="true"
     >
       <template #left>
         <div class="left-panel">
@@ -60,115 +71,117 @@
       </template>
 
       <template #right>
-        <ResizableVerticalPanels
-          :initial-top-height="260"
-          :min-top-height="200"
-          :max-top-height="400"
-          height="100%"
-        >
-          <template #top>
-            <div class="operation-panel-wrapper">
-              <div class="panel-header">
-                <h3 class="panel-title">操作配置</h3>
+        <div v-if="!isMobile || rightPanelVisible" class="right-panel-container">
+          <ResizableVerticalPanels
+            :initial-top-height="260"
+            :min-top-height="200"
+            :max-top-height="400"
+            height="100%"
+          >
+            <template #top>
+              <div class="operation-panel-wrapper">
+                <div class="panel-header">
+                  <h3 class="panel-title">操作配置</h3>
+                </div>
+                <div class="panel-content">
+                  <OperationPanel />
+                </div>
               </div>
-              <div class="panel-content">
-                <OperationPanel />
+            </template>
+
+            <template #bottom>
+              <div class="result-panel-wrapper">
+                <!-- 标签页 - 存储监控始终可用 -->
+                <el-tabs v-model="resultTab" class="result-tabs" key="result-tabs">
+                  <!-- 存储监控 - 始终可用 -->
+                  <el-tab-pane name="storage" label="存储监控">
+                    <template #label>
+                      <div class="tab-label">
+                        <el-icon><FolderOpened /></el-icon>
+                        <span>存储监控</span>
+                      </div>
+                    </template>
+                    <StorageMonitor />
+                  </el-tab-pane>
+
+                  <!-- 有结果时显示的其他标签页 -->
+                  <template v-if="hasResults">
+                    <el-tab-pane name="overview" label="结果概览">
+                      <template #label>
+                        <div class="tab-label">
+                          <el-icon><DataBoard /></el-icon>
+                          <span>结果概览</span>
+                          <el-badge :value="resultCount" />
+                        </div>
+                      </template>
+                      <ResultOverview @view-detail="handleViewDetail" />
+                    </el-tab-pane>
+
+                    <el-tab-pane name="detail" label="详细结果">
+                      <template #label>
+                        <div class="tab-label">
+                          <el-icon><Document /></el-icon>
+                          <span>详细结果</span>
+                        </div>
+                      </template>
+                      <ResultDetail @retry="handleRetry" />
+                    </el-tab-pane>
+
+                    <el-tab-pane name="analysis" label="AI 分析">
+                      <template #label>
+                        <div class="tab-label">
+                          <el-icon><ChatDotRound /></el-icon>
+                          <span>AI 分析</span>
+                        </div>
+                      </template>
+                      <AIAnalysis />
+                    </el-tab-pane>
+                  </template>
+
+                  <!-- 无结果时显示提示 -->
+                  <el-tab-pane v-else name="empty" label="等待操作">
+                    <template #label>
+                      <div class="tab-label tab-label-disabled">
+                        <el-icon><Operation /></el-icon>
+                        <span>等待操作</span>
+                      </div>
+                    </template>
+                    <div class="empty-state">
+                      <div class="empty-illustration">
+                        <el-icon :size="64" color="#d1d5db"><Operation /></el-icon>
+                      </div>
+                      <h3 class="empty-title">选择主机并执行操作</h3>
+                      <p class="empty-description">
+                        在左侧选择目标主机，配置操作参数，点击执行按钮查看结果
+                      </p>
+                      <div class="empty-tips">
+                        <div class="tip-item">
+                          <el-icon><Check /></el-icon>
+                          <span>支持批量查看日志、执行命令</span>
+                        </div>
+                        <div class="tip-item">
+                          <el-icon><Check /></el-icon>
+                          <span>AI 智能分析执行结果</span>
+                        </div>
+                        <div class="tip-item">
+                          <el-icon><Check /></el-icon>
+                          <span>失败操作支持一键重试</span>
+                        </div>
+                      </div>
+                    </div>
+                  </el-tab-pane>
+                </el-tabs>
               </div>
-            </div>
-          </template>
-
-          <template #bottom>
-            <div class="result-panel-wrapper">
-              <!-- 标签页 - 存储监控始终可用 -->
-              <el-tabs v-model="resultTab" class="result-tabs" key="result-tabs">
-                <!-- 存储监控 - 始终可用 -->
-                <el-tab-pane name="storage" label="存储监控">
-                  <template #label>
-                    <div class="tab-label">
-                      <el-icon><FolderOpened /></el-icon>
-                      <span>存储监控</span>
-                    </div>
-                  </template>
-                  <StorageMonitor />
-                </el-tab-pane>
-
-                <!-- 有结果时显示的其他标签页 -->
-                <template v-if="hasResults">
-                  <el-tab-pane name="overview" label="结果概览">
-                    <template #label>
-                      <div class="tab-label">
-                        <el-icon><DataBoard /></el-icon>
-                        <span>结果概览</span>
-                        <el-badge :value="resultCount" />
-                      </div>
-                    </template>
-                    <ResultOverview @view-detail="handleViewDetail" />
-                  </el-tab-pane>
-
-                  <el-tab-pane name="detail" label="详细结果">
-                    <template #label>
-                      <div class="tab-label">
-                        <el-icon><Document /></el-icon>
-                        <span>详细结果</span>
-                      </div>
-                    </template>
-                    <ResultDetail @retry="handleRetry" />
-                  </el-tab-pane>
-
-                  <el-tab-pane name="analysis" label="AI 分析">
-                    <template #label>
-                      <div class="tab-label">
-                        <el-icon><ChatDotRound /></el-icon>
-                        <span>AI 分析</span>
-                      </div>
-                    </template>
-                    <AIAnalysis />
-                  </el-tab-pane>
-                </template>
-
-                <!-- 无结果时显示提示 -->
-                <el-tab-pane v-else name="empty" label="等待操作">
-                  <template #label>
-                    <div class="tab-label tab-label-disabled">
-                      <el-icon><Operation /></el-icon>
-                      <span>等待操作</span>
-                    </div>
-                  </template>
-                  <div class="empty-state">
-                    <div class="empty-illustration">
-                      <el-icon :size="64" color="#d1d5db"><Operation /></el-icon>
-                    </div>
-                    <h3 class="empty-title">选择主机并执行操作</h3>
-                    <p class="empty-description">
-                      在左侧选择目标主机，配置操作参数，点击执行按钮查看结果
-                    </p>
-                    <div class="empty-tips">
-                      <div class="tip-item">
-                        <el-icon><Check /></el-icon>
-                        <span>支持批量查看日志、执行命令</span>
-                      </div>
-                      <div class="tip-item">
-                        <el-icon><Check /></el-icon>
-                        <span>AI 智能分析执行结果</span>
-                      </div>
-                      <div class="tip-item">
-                        <el-icon><Check /></el-icon>
-                        <span>失败操作支持一键重试</span>
-                      </div>
-                    </div>
-                  </div>
-                </el-tab-pane>
-              </el-tabs>
-            </div>
-          </template>
-        </ResizableVerticalPanels>
+            </template>
+          </ResizableVerticalPanels>
+        </div>
       </template>
     </ResizablePanels>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import {
   DataBoard, Document, ChatDotRound, Operation,
@@ -190,6 +203,25 @@ const consoleStore = useConsoleStore()
 const hostStore = useHostStore()
 
 const resultTab = ref('storage')
+const isMobile = ref(false)
+const rightPanelVisible = ref(true)
+
+// 检测移动端
+const checkMobile = () => {
+  isMobile.value = window.innerWidth < 1024
+  if (isMobile.value) {
+    rightPanelVisible.value = false
+  }
+}
+
+onMounted(() => {
+  checkMobile()
+  window.addEventListener('resize', checkMobile)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('resize', checkMobile)
+})
 
 const hasResults = computed(() => consoleStore.executionResults.length > 0)
 const selectedCount = computed(() => consoleStore.selectedHosts.length)
@@ -270,6 +302,12 @@ watch(hasResults, (has, had) => {
   justify-content: space-between;
   align-items: center;
   gap: var(--spacing-6);
+  flex-wrap: wrap;
+}
+
+.header-content {
+  flex: 1;
+  min-width: 200px;
 }
 
 .page-title {
@@ -295,6 +333,7 @@ watch(hasResults, (has, had) => {
   border-radius: var(--radius-xl);
   box-shadow: var(--shadow-sm);
   border: 1px solid var(--color-gray-200);
+  flex-shrink: 0;
 }
 
 .stat-item {
@@ -325,6 +364,10 @@ watch(hasResults, (has, had) => {
   background: var(--color-gray-200);
 }
 
+.mobile-panel-toggle {
+  flex-shrink: 0;
+}
+
 /* 左侧面板 */
 .left-panel {
   height: 100%;
@@ -343,6 +386,8 @@ watch(hasResults, (has, had) => {
   padding: var(--spacing-4);
   border-bottom: 1px solid var(--color-gray-200);
   background: var(--color-gray-50);
+  flex-wrap: wrap;
+  gap: var(--spacing-2);
 }
 
 .panel-title {
@@ -355,6 +400,7 @@ watch(hasResults, (has, had) => {
 .panel-actions {
   display: flex;
   gap: var(--spacing-2);
+  flex-wrap: wrap;
 }
 
 .panel-content {
@@ -376,6 +422,13 @@ watch(hasResults, (has, had) => {
   color: var(--color-gray-600);
 }
 
+/* 右侧面板容器 */
+.right-panel-container {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
 /* 操作面板 */
 .operation-panel-wrapper,
 .result-panel-wrapper {
@@ -385,14 +438,6 @@ watch(hasResults, (has, had) => {
   background: #fff;
   border-radius: var(--radius-xl);
   border: 1px solid var(--color-gray-200);
-  overflow: hidden;
-}
-
-/* 结果容器 */
-.results-container {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
   overflow: hidden;
 }
 
@@ -430,7 +475,7 @@ watch(hasResults, (has, had) => {
   cursor: not-allowed;
 }
 
-/* 空状态 - 优化版 */
+/* 空状态 */
 .empty-state {
   flex: 1;
   display: flex;
@@ -478,5 +523,204 @@ watch(hasResults, (has, had) => {
 .tip-item .el-icon {
   color: #22c55e;
   flex-shrink: 0;
+}
+
+/* ===== 响应式设计 - Responsive Design ===== */
+
+/* 平板设备 (768px - 1023px) */
+@media (max-width: 1023px) {
+  .console-page {
+    padding: var(--spacing-3);
+    gap: var(--spacing-4);
+  }
+
+  .page-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--spacing-4);
+  }
+
+  .header-content {
+    width: 100%;
+  }
+
+  .page-title {
+    font-size: var(--text-2xl);
+  }
+
+  .quick-stats {
+    width: 100%;
+    justify-content: space-around;
+    padding: var(--spacing-3);
+  }
+
+  .stat-divider {
+    display: none;
+  }
+
+  .panel-header {
+    padding: var(--spacing-3);
+  }
+
+  .panel-actions {
+    width: 100%;
+  }
+
+  .panel-actions :deep(.el-button) {
+    flex: 1;
+    min-width: 60px;
+  }
+}
+
+/* 手机设备 (< 768px) */
+@media (max-width: 767px) {
+  .console-page {
+    padding: var(--spacing-2);
+    gap: var(--spacing-3);
+    height: auto;
+  }
+
+  .page-header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--spacing-3);
+  }
+
+  .header-content {
+    width: 100%;
+  }
+
+  .page-title {
+    font-size: var(--text-xl);
+    margin-bottom: var(--spacing-1);
+  }
+
+  .page-description {
+    font-size: var(--text-xs);
+  }
+
+  .quick-stats {
+    width: 100%;
+    padding: var(--spacing-2);
+    gap: var(--spacing-2);
+  }
+
+  .stat-item {
+    flex: 1;
+    flex-direction: column;
+    gap: var(--spacing-1);
+  }
+
+  .stat-label {
+    font-size: var(--text-xs);
+  }
+
+  .stat-value {
+    font-size: var(--text-base);
+  }
+
+  .stat-divider {
+    display: none;
+  }
+
+  .mobile-panel-toggle {
+    width: 100%;
+  }
+
+  .panel-header {
+    padding: var(--spacing-2);
+    gap: var(--spacing-1);
+  }
+
+  .panel-title {
+    font-size: var(--text-sm);
+  }
+
+  .panel-actions {
+    width: 100%;
+    gap: var(--spacing-1);
+  }
+
+  .panel-actions :deep(.el-button) {
+    flex: 1;
+    font-size: var(--text-xs);
+    padding: 4px 8px;
+  }
+
+  .panel-footer {
+    padding: var(--spacing-2);
+  }
+
+  .selection-count {
+    font-size: var(--text-xs);
+  }
+
+  .empty-state {
+    padding: var(--spacing-4);
+  }
+
+  .empty-illustration {
+    margin-bottom: var(--spacing-3);
+  }
+
+  .empty-title {
+    font-size: var(--text-base);
+    margin-bottom: var(--spacing-2);
+  }
+
+  .empty-description {
+    font-size: var(--text-sm);
+    margin-bottom: var(--spacing-4);
+  }
+
+  .tab-label {
+    gap: var(--spacing-1);
+  }
+
+  .tab-label span {
+    display: none;
+  }
+
+  .tab-label :deep(.el-icon) {
+    margin: 0;
+  }
+
+  .result-tabs :deep(.el-tabs__header) {
+    padding: 0 var(--spacing-2);
+  }
+}
+
+/* 超小屏幕 (< 480px) */
+@media (max-width: 479px) {
+  .console-page {
+    padding: var(--spacing-1);
+    gap: var(--spacing-2);
+  }
+
+  .page-title {
+    font-size: var(--text-lg);
+  }
+
+  .quick-stats {
+    padding: var(--spacing-1);
+    gap: var(--spacing-1);
+  }
+
+  .stat-item {
+    gap: var(--spacing-1);
+  }
+
+  .stat-label {
+    display: none;
+  }
+
+  .panel-header {
+    padding: var(--spacing-1);
+  }
+
+  .panel-actions :deep(.el-button) {
+    padding: 2px 6px;
+    font-size: 11px;
+  }
 }
 </style>

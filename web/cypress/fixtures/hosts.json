@@ -1,0 +1,19 @@
+{
+  "hosts": [
+    {
+      "id": "host-001",
+      "name": "Server 1",
+      "status": "online"
+    },
+    {
+      "id": "host-002",
+      "name": "Server 2",
+      "status": "offline"
+    },
+    {
+      "id": "host-003",
+      "name": "Server 3",
+      "status": "online"
+    }
+  ]
+}

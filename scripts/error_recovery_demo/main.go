@@ -1,4 +1,4 @@
-package main
+package main // error_recovery_demo
 
 import (
 	"fmt"

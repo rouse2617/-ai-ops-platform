@@ -78,6 +78,33 @@ func (m *mockSessionRepository) UpdateTitle(sessionID string, title string) erro
 	return nil
 }
 
+func (m *mockSessionRepository) GetMessagesByHost(sessionID string, hostID string) ([]*model.Message, error) {
+	messages, ok := m.messages[sessionID]
+	if !ok {
+		return []*model.Message{}, nil
+	}
+	if hostID == "" {
+		return messages, nil
+	}
+	filtered := make([]*model.Message, 0)
+	for _, msg := range messages {
+		if msg.HostID == hostID {
+			filtered = append(filtered, msg)
+		}
+	}
+	return filtered, nil
+}
+
+func (m *mockSessionRepository) UpdateHosts(sessionID string, hosts []string) error {
+	session, ok := m.sessions[sessionID]
+	if !ok {
+		return gorm.ErrRecordNotFound
+	}
+	session.Hosts = hosts
+	session.UpdatedAt = time.Now()
+	return nil
+}
+
 // mockHostRepository mock主机仓库
 type mockHostRepository struct {
 	hosts map[string]*model.Host

@@ -6,7 +6,11 @@
   "scripts": {
     "dev": "vite",
     "build": "vue-tsc && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test:e2e": "cypress run",
+    "test:e2e:open": "cypress open",
+    "test:e2e:p0": "cypress run --spec 'cypress/e2e/p0-*.cy.ts'",
+    "test:e2e:p1": "cypress run --spec 'cypress/e2e/p1-*.cy.ts'"
   },
   "dependencies": {
     "@element-plus/icons-vue": "^2.3.1",
@@ -24,9 +28,11 @@
     "vue3-virtual-scroll-list": "^0.2.1"
   },
   "devDependencies": {
+    "sass-embedded": "^1.77.0",
     "@types/node": "^20.11.25",
     "@vitejs/plugin-vue": "^5.0.4",
     "@vue/test-utils": "^2.4.6",
+    "cypress": "^13.6.0",
     "jsdom": "^27.4.0",
     "typescript": "^5.4.2",
     "unplugin-auto-import": "^20.3.0",

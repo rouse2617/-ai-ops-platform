@@ -293,3 +293,28 @@ func (h *ChatHandler) normalizeHistory(req ChatRequest) []service.ChatMessage {
 	}
 	return history
 }
+
+// UpdateSessionHosts 更新会话关联的主机列表
+// PUT /api/chat/sessions/:id/hosts
+func (h *ChatHandler) UpdateSessionHosts(c *gin.Context) {
+	sessionID := c.Param("id")
+	if sessionID == "" {
+		ParamError(c, "session_id 不能为空")
+		return
+	}
+
+	var req struct {
+		Hosts []string `json:"hosts" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		ParamError(c, "参数错误: "+err.Error())
+		return
+	}
+
+	if err := h.chatService.UpdateSessionHosts(sessionID, req.Hosts); err != nil {
+		InternalError(c, "更新会话主机失败: "+err.Error())
+		return
+	}
+
+	SuccessWithMessage(c, "更新成功", nil)
+}

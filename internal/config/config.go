@@ -9,16 +9,17 @@ import (
 
 // Config 应用配置
 type Config struct {
-	Server   ServerConfig   `yaml:"server"`
-	LLM      LLMConfig      `yaml:"llm"`
-	SSH      SSHConfig      `yaml:"ssh"`
-	Hosts    []HostConfig   `yaml:"hosts"`      // 预定义主机列表
-	Database DatabaseConfig `yaml:"database"`
-	Scripts  ScriptsConfig  `yaml:"scripts"`
-	Agent    AgentConfig    `yaml:"agent"`
-	Log      LogConfig      `yaml:"log"`
-	MCP      []MCPConfig    `yaml:"mcp"`       // MCP 配置
-	Auth     AuthConfig     `yaml:"auth"`      // 认证配置
+	Server     ServerConfig     `yaml:"server"`
+	LLM        LLMConfig        `yaml:"llm"`
+	SSH        SSHConfig        `yaml:"ssh"`
+	Hosts      []HostConfig     `yaml:"hosts"`      // 预定义主机列表
+	Database   DatabaseConfig   `yaml:"database"`
+	Scripts    ScriptsConfig    `yaml:"scripts"`
+	Agent      AgentConfig      `yaml:"agent"`
+	Log        LogConfig        `yaml:"log"`
+	MCP        []MCPConfig      `yaml:"mcp"`        // MCP 配置
+	Auth       AuthConfig       `yaml:"auth"`       // 认证配置
+	Prometheus PrometheusConfig `yaml:"prometheus"` // Prometheus 配置
 }
 
 // ServerConfig 服务器配置

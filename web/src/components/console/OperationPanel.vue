@@ -68,9 +68,9 @@
             </div>
           </el-form-item>
           <el-form-item>
-            <el-button 
-              type="primary" 
-              @click="handleExecuteCommand" 
+            <el-button
+              type="primary"
+              @click="handleExecuteCommand"
               :loading="executing"
               :danger="isCritical"
             >
@@ -95,20 +95,40 @@
         </div>
       </el-tab-pane>
     </el-tabs>
+
+    <!-- 高危操作确认弹窗 -->
+    <ConfirmationDialog
+      v-model:visible="confirmDialogVisible"
+      :request="confirmRequest"
+      @confirm="handleConfirmExecution"
+      @cancel="handleCancelExecution"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, computed } from 'vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage } from 'element-plus'
 import { Warning } from '@element-plus/icons-vue'
 import { useConsoleStore } from '@/stores/console'
-import { isDangerousCommand, isCriticalCommand, getDangerousCommandWarning, highlightDangerousKeywords } from '@/utils/dangerousCommands'
+import {
+  isDangerousCommand,
+  isCriticalCommand,
+  getDangerousCommandWarning,
+  highlightDangerousKeywords,
+  getCommandRiskLevel,
+  getCommandImpact
+} from '@/utils/dangerousCommands'
+import ConfirmationDialog from '@/components/common/ConfirmationDialog.vue'
+import type { ConfirmationRequest } from '@/types/chat-ui'
 
 const consoleStore = useConsoleStore()
 
 const activeTab = ref('query_log')
 const executing = ref(false)
+const confirmDialogVisible = ref(false)
+const confirmRequest = ref<ConfirmationRequest | null>(null)
+const pendingCommand = ref<{ command: string; timeout: number } | null>(null)
 
 const logForm = ref({
   log_type: 'nginx',
@@ -209,49 +229,51 @@ const handleExecuteCommand = async () => {
     ElMessage.warning('请输入命令')
     return
   }
-  
+
   const command = commandForm.value.command.trim()
-  
-  // 危险命令二次确认
-  if (isCritical.value) {
-    try {
-      await ElMessageBox.confirm(
-        `⚠️ 高危警告\n\n${dangerWarning.value}\n\n命令: ${command}\n\n确定要继续执行吗？`,
-        '危险操作确认',
-        {
-          confirmButtonText: '确定执行',
-          cancelButtonText: '取消',
-          type: 'warning',
-          dangerouslyUseHTMLString: false,
-          distinguishCancelAndClose: true
-        }
-      )
-    } catch {
-      // 用户取消
-      return
-    }
-  } else if (isDangerous.value) {
-    try {
-      await ElMessageBox.confirm(
-        `⚠️ 警告\n\n${dangerWarning.value}\n\n命令: ${command}\n\n确定要继续执行吗？`,
-        '危险操作确认',
-        {
-          confirmButtonText: '确定执行',
-          cancelButtonText: '取消',
-          type: 'warning',
-          distinguishCancelAndClose: true
-        }
-      )
-    } catch {
-      // 用户取消
-      return
-    }
+  const riskLevel = getCommandRiskLevel(command)
+
+  // 低风险命令直接执行
+  if (riskLevel === 'low') {
+    executeOperation('run_command', {
+      command: command,
+      timeout: commandForm.value.timeout
+    })
+    return
   }
-  
-  executeOperation('run_command', {
+
+  // 中高风险命令显示确认弹窗
+  pendingCommand.value = {
     command: command,
     timeout: commandForm.value.timeout
+  }
+
+  confirmRequest.value = {
+    id: `cmd-${Date.now()}`,
+    command: command,
+    riskLevel: riskLevel,
+    affectedHosts: consoleStore.selectedHosts,
+    requiresTyping: riskLevel === 'critical',
+    estimatedImpact: getCommandImpact(command)
+  }
+
+  confirmDialogVisible.value = true
+}
+
+const handleConfirmExecution = () => {
+  if (!pendingCommand.value) return
+
+  executeOperation('run_command', {
+    command: pendingCommand.value.command,
+    timeout: pendingCommand.value.timeout
   })
+
+  pendingCommand.value = null
+}
+
+const handleCancelExecution = () => {
+  pendingCommand.value = null
+  ElMessage.info('已取消命令执行')
 }
 
 const handleCheckCPU = () => {

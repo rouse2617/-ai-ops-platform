@@ -1,0 +1,71 @@
+# Prometheus 集成配置示例
+
+prometheus:
+  enabled: true
+  address: "http://localhost:9090"
+  timeout: 30
+
+# Prometheus 服务器配置示例 (prometheus.yml)
+# 在 Prometheus 服务器上配置以下内容：
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: 'node'
+    static_configs:
+      - targets: ['localhost:9100']
+        labels:
+          instance: 'web-01:9100'
+      - targets: ['192.168.1.100:9100']
+        labels:
+          instance: 'web-02:9100'
+      - targets: ['192.168.1.101:9100']
+        labels:
+          instance: 'db-01:9100'
+
+# Recording Rules 配置 (recording_rules.yml)
+# 预计算常用指标以提高查询性能
+
+groups:
+  - name: node_metrics
+    interval: 30s
+    rules:
+      - record: node:cpu_usage:rate5m
+        expr: 100 - (avg by (instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100)
+
+      - record: node:memory_usage:ratio
+        expr: (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes))
+
+      - record: node:disk_usage:ratio
+        expr: (node_filesystem_size_bytes - node_filesystem_avail_bytes) / node_filesystem_size_bytes
+
+      - record: node:network_io:rate5m
+        expr: rate(node_network_receive_bytes_total[5m]) + rate(node_network_transmit_bytes_total[5m])
+
+# Alert Rules 配置 (alert_rules.yml)
+
+groups:
+  - name: node_alerts
+    rules:
+      - alert: HighCPUUsage
+        expr: node:cpu_usage:rate5m > 80
+        for: 5m
+        annotations:
+          summary: "High CPU usage on {{ $labels.instance }}"
+          description: "CPU usage is {{ $value }}%"
+
+      - alert: HighMemoryUsage
+        expr: node:memory_usage:ratio > 0.85
+        for: 5m
+        annotations:
+          summary: "High memory usage on {{ $labels.instance }}"
+          description: "Memory usage is {{ $value | humanizePercentage }}"
+
+      - alert: HighDiskUsage
+        expr: node:disk_usage:ratio > 0.90
+        for: 5m
+        annotations:
+          summary: "High disk usage on {{ $labels.instance }}"
+          description: "Disk usage is {{ $value | humanizePercentage }}"

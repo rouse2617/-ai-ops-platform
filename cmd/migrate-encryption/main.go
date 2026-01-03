@@ -22,7 +22,11 @@ func main() {
 	flag.Parse()
 
 	// 初始化日志
-	logger.Init(nil)
+	logger.Init(logger.Config{
+		Level:  "info",
+		Format: "text",
+		Output: "stdout",
+	})
 	defer logger.Sync()
 
 	// 获取加密密钥

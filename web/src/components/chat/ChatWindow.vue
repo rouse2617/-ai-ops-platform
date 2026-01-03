@@ -143,8 +143,8 @@
     </main>
 
     <!-- 右侧面板 - 上下文/监控 (桌面端和平板端显示) -->
-    <aside 
-      v-if="layout !== 'single-column' && rightPanelVisible" 
+    <aside
+      v-if="layout !== 'single-column' && rightPanelVisible"
       class="context-panel"
     >
       <div class="panel-header">
@@ -169,8 +169,14 @@
             </div>
             <MonitorChart :host-id="hostId" metric="cpu" height="120px" @anomaly-click="handleAnomalyClick" />
             <MonitorChart :host-id="hostId" metric="memory" height="120px" @anomaly-click="handleAnomalyClick" />
-            <QuickActions :host-id="hostId" @execute="handleQuickAction" />
           </div>
+
+          <!-- 智能操作面板 -->
+          <ContextualActionsPanel
+            :host-id="selectedHostIds[0]"
+            :tool-results="latestToolResults"
+            @execute="handleContextualAction"
+          />
         </template>
         <!-- 监控内容占位 -->
         <div v-else class="monitor-placeholder">
@@ -247,10 +253,11 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, onMounted } from 'vue'
+import { computed, ref, onMounted, watch } from 'vue'
 import { useChatStore } from '@/stores/chat'
 import { useUIStore } from '@/stores/ui'
-import type { Message } from '@/api/chat'
+import { usePanelSync } from '@/composables/usePanelSync'
+import type { Message, ToolCall } from '@/api/chat'
 import {
   ChatDotRound, ArrowDown, Plus, Delete,
   Monitor, Menu, Close, Expand, Fold, DataAnalysis
@@ -260,10 +267,11 @@ import MessageList from './MessageList.vue'
 import InputBox from './InputBox.vue'
 import HostSelector from './HostSelector.vue'
 import MonitorChart from './MonitorChart.vue'
-import QuickActions from './QuickActions.vue'
+import ContextualActionsPanel from './ContextualActionsPanel.vue'
 
 const chatStore = useChatStore()
 const uiStore = useUIStore()
+const { syncToHost } = usePanelSync()
 const messageListRef = ref()
 const inputBoxRef = ref()
 
@@ -285,6 +293,29 @@ const historyPanelOverlayVisible = computed(() => uiStore.historyPanelOverlayVis
 // Local state
 const silentMode = ref(false)
 
+// 从最近的消息中提取工具执行结果
+const latestToolResults = computed(() => {
+  const results: Array<{ tool_name: string; result: unknown; host_id?: string }> = []
+
+  // 从最近的 5 条消息中提取工具调用结果
+  const recentMessages = messages.value.slice(-5)
+  for (const msg of recentMessages) {
+    if (msg.role === 'assistant' && msg.toolCalls) {
+      for (const tc of msg.toolCalls) {
+        if (tc.status === 'success' && tc.result) {
+          results.push({
+            tool_name: tc.name,
+            result: tc.result,
+            host_id: selectedHostIds.value[0]
+          })
+        }
+      }
+    }
+  }
+
+  return results
+})
+
 const selectedHostIds = computed({
   get: () => chatStore.selectedHostIds,
   set: (val) => chatStore.setSelectedHosts(val)
@@ -301,6 +332,24 @@ onMounted(async () => {
   await chatStore.loadSessions()
   if (!chatStore.currentSessionId) {
     await chatStore.newSession()
+  }
+})
+
+// Watch messages for panel sync
+watch(() => messages.value, (newMessages) => {
+  if (newMessages.length === 0) return
+
+  const lastMessage = newMessages[newMessages.length - 1]
+  if (lastMessage.role === 'assistant' && selectedHostIds.value.length > 0) {
+    // Sync to first selected host
+    syncToHost(selectedHostIds.value[0])
+  }
+}, { deep: true })
+
+// Watch selected hosts for panel sync
+watch(() => selectedHostIds.value, (newHosts) => {
+  if (newHosts.length > 0) {
+    syncToHost(newHosts[0])
   }
 })
 
@@ -419,9 +468,13 @@ const handleAnomalyClick = (timestamp: number) => {
   console.log('Anomaly clicked at:', timestamp)
 }
 
-const handleQuickAction = (command: string) => {
-  // 执行快速操作命令
-  chatStore.sendMessage(`执行命令: ${command}`)
+// 处理上下文相关的智能操作
+const handleContextualAction = (command: string, action: any) => {
+  // 将操作转换为聊天消息发送
+  const message = action.command
+    ? `请在主机 ${selectedHostIds.value[0]} 上执行: ${action.label} (${action.command})`
+    : `请在主机 ${selectedHostIds.value[0]} 上执行: ${action.label}`
+  chatStore.sendMessage(message)
 }
 </script>
 
@@ -596,8 +649,8 @@ const handleQuickAction = (command: string) => {
   align-items: center;
   gap: var(--spacing-3);
   padding: var(--spacing-3) var(--spacing-4);
-  background: linear-gradient(to bottom, #f8fafc, #fff);
-  border-bottom: 1px solid var(--color-gray-200);
+  background: #fff;
+  border-bottom: 1px solid #f0f0f0;
   flex-shrink: 0;
 }
 
@@ -712,9 +765,10 @@ const handleQuickAction = (command: string) => {
 }
 
 .input-area {
-  border-top: 1px solid var(--color-gray-200);
+  border-top: none;
   background: #fff;
   flex-shrink: 0;
+  box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.03);
 }
 
 /* ============================================
@@ -724,24 +778,31 @@ const handleQuickAction = (command: string) => {
   grid-area: context;
   display: flex;
   flex-direction: column;
-  background: #fff;
-  border-left: 1px solid var(--color-gray-200);
+  background: linear-gradient(180deg, #FAFBFC 0%, #F5F7FA 100%);
+  border-left: none;
   overflow: hidden;
+  box-shadow: -2px 0 8px rgba(0, 0, 0, 0.03);
 }
 
 .context-panel .panel-header {
-  background: linear-gradient(to bottom, #f8fafc, #fff);
-  border-bottom: 1px solid var(--color-gray-200);
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border-bottom: none;
+  color: #fff;
+}
+
+.context-panel .panel-header .panel-title {
+  color: #fff;
 }
 
 .context-panel .panel-title {
-  color: var(--color-gray-700);
+  color: #fff;
 }
 
 .context-content {
   flex: 1;
   overflow-y: auto;
   padding: var(--spacing-4);
+  background: transparent;
 }
 
 .monitor-placeholder {
@@ -752,6 +813,10 @@ const handleQuickAction = (command: string) => {
   height: 100%;
   color: var(--color-gray-400);
   text-align: center;
+  background: rgba(255, 255, 255, 0.5);
+  border-radius: 12px;
+  margin: 16px;
+  padding: 32px;
 }
 
 .monitor-placeholder p {
@@ -767,12 +832,19 @@ const handleQuickAction = (command: string) => {
 /* 主机监控区域样式 */
 .host-monitor-section {
   margin-bottom: var(--spacing-4);
-  padding-bottom: var(--spacing-4);
-  border-bottom: 1px solid var(--color-gray-200);
+  padding: var(--spacing-4);
+  background: #fff;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  transition: all 0.2s ease;
+}
+
+.host-monitor-section:hover {
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
 }
 
 .host-monitor-section:last-child {
-  border-bottom: none;
+  margin-bottom: var(--spacing-4);
 }
 
 .host-monitor-header {
@@ -780,6 +852,8 @@ const handleQuickAction = (command: string) => {
   align-items: center;
   gap: var(--spacing-2);
   margin-bottom: var(--spacing-3);
+  padding-bottom: var(--spacing-2);
+  border-bottom: 1px solid #f0f0f0;
   font-size: var(--text-sm);
   font-weight: var(--font-semibold);
   color: var(--color-gray-700);

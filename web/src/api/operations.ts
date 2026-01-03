@@ -17,8 +17,10 @@ export interface BatchExecuteResult {
 export type BatchExecuteResponse = BatchExecuteResult[]
 
 // 批量执行操作
-export function batchExecute(data: BatchExecuteRequest) {
-  return request.post<BatchExecuteResponse>('/operations/batch-execute', data)
+export async function batchExecute(data: BatchExecuteRequest): Promise<BatchExecuteResponse> {
+  const response = await request.post<BatchExecuteResponse>('/operations/batch-execute', data)
+  // 确保返回数组
+  return Array.isArray(response) ? response : []
 }
 
 

@@ -261,10 +261,11 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { useHostStore } from '@/stores/host'
 import type { Host } from '@/api/host'
 import { batchExecute } from '@/api/operations'
+import { getCommandRiskLevel, getDangerousCommandWarning } from '@/utils/dangerousCommands'
 
 // ===== 数据类型 =====
 interface HostNode {
@@ -482,6 +483,42 @@ const handleExecute = async () => {
     return
   }
 
+  const cmd = command.value.trim()
+  const riskLevel = getCommandRiskLevel(cmd)
+
+  // 高危命令需要确认
+  if (riskLevel === 'critical' || riskLevel === 'high') {
+    const warning = getDangerousCommandWarning(cmd)
+    const hostNames = selectedHosts.value.map(id => {
+      const host = getHostById(id)
+      return host?.name || id
+    })
+
+    try {
+      await ElMessageBox.confirm(
+        `<div style="text-align: left;">
+          <p><strong>⚠️ 检测到高危命令</strong></p>
+          <p style="color: #f56c6c; margin: 10px 0;">${warning}</p>
+          <p><strong>命令:</strong> <code style="background: #f5f5f5; padding: 2px 6px; border-radius: 4px;">${cmd}</code></p>
+          <p><strong>目标主机 (${hostNames.length} 台):</strong></p>
+          <ul style="margin: 5px 0; padding-left: 20px;">${hostNames.map(h => `<li>${h}</li>`).join('')}</ul>
+          <p style="color: #909399; font-size: 12px; margin-top: 10px;">请确认您了解此命令的风险并确定要执行。</p>
+        </div>`,
+        '高危操作确认',
+        {
+          confirmButtonText: '确认执行',
+          cancelButtonText: '取消',
+          type: 'warning',
+          dangerouslyUseHTMLString: true,
+          confirmButtonClass: 'el-button--danger'
+        }
+      )
+    } catch {
+      ElMessage.info('已取消命令执行')
+      return
+    }
+  }
+
   executing.value = true
 
   try {
@@ -502,11 +539,12 @@ const handleExecute = async () => {
     })
 
     // 处理执行结果
-    const successCount = response.filter(r => r.status === 'success').length
-    const errorCount = response.filter(r => r.status === 'error').length
+    const responseArray = Array.isArray(response) ? response : []
+    const successCount = responseArray.filter(r => r.status === 'success').length
+    const errorCount = responseArray.filter(r => r.status === 'error').length
 
     // 将结果添加到结果列表
-    for (const result of response) {
+    for (const result of responseArray) {
       results.value.unshift({
         id: Date.now() + Math.random().toString(),
         host: result.host,

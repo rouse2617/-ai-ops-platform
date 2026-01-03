@@ -22,7 +22,9 @@
               <div class="status-indicator" :class="result.status">
                 <span class="status-dot"></span>
               </div>
-              <span class="host-name">{{ result.host }}</span>
+              <el-tag :type="getHostTagType(result.host)" effect="dark" size="large" class="host-tag">
+                {{ result.host }}
+              </el-tag>
               <span class="elapsed">
                 <el-icon><Timer /></el-icon>
                 {{ formatElapsed(result.elapsed) }}
@@ -211,6 +213,18 @@ const handleRetry = (result: BatchExecuteResult) => {
   emit('retry', result)
 }
 
+// 为不同主机分配不同颜色
+const hostColorMap = new Map<string, string>()
+const tagTypes = ['', 'success', 'warning', 'danger', 'info'] as const
+
+function getHostTagType(host: string): typeof tagTypes[number] {
+  if (!hostColorMap.has(host)) {
+    const index = hostColorMap.size % tagTypes.length
+    hostColorMap.set(host, tagTypes[index])
+  }
+  return hostColorMap.get(host) as typeof tagTypes[number]
+}
+
 const emit = defineEmits<{
   retry: [result: BatchExecuteResult]
 }>()
@@ -311,10 +325,11 @@ const emit = defineEmits<{
   }
 }
 
-.host-name {
+.host-tag {
   font-weight: 600;
   font-size: 14px;
   flex: 1;
+  max-width: 300px;
 }
 
 .elapsed {

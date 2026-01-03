@@ -181,6 +181,7 @@ func (c *AnthropicClient) ChatStreamWithTools(ctx context.Context, messages []Me
 }
 
 // convertMessages 转换消息格式，提取 system 消息
+// 注意：为兼容第三方 API，将 tool_use 和 tool_result 转换为普通文本消息
 func (c *AnthropicClient) convertMessages(messages []Message) (string, []anthropic.MessageParam) {
 	var system string
 	var anthropicMsgs []anthropic.MessageParam
@@ -193,34 +194,25 @@ func (c *AnthropicClient) convertMessages(messages []Message) (string, []anthrop
 
 		// 转换为 Anthropic 格式
 		if msg.Role == RoleTool {
-			// tool 消息转换为 user 消息，包含 tool_result
-			anthropicMsgs = append(anthropicMsgs, anthropic.NewUserMessage(
-				anthropic.NewToolResultBlock(msg.ToolCallID, msg.Content, false),
-			))
+			// tool 消息转换为 user 消息（纯文本格式，兼容第三方 API）
+			toolResultText := fmt.Sprintf("[工具结果 %s]\n%s", msg.ToolCallID, msg.Content)
+			anthropicMsgs = append(anthropicMsgs, anthropic.MessageParam{
+				Role:    anthropic.MessageParamRoleUser,
+				Content: []anthropic.ContentBlockParamUnion{anthropic.NewTextBlock(toolResultText)},
+			})
 		} else if len(msg.ToolCalls) > 0 {
-			// assistant 消息包含 tool_use
-			var content []anthropic.ContentBlockParamUnion
+			// assistant 消息包含 tool_use，转换为纯文本格式
+			var textContent string
 			if msg.Content != "" {
-				content = append(content, anthropic.NewTextBlock(msg.Content))
+				textContent = msg.Content + "\n\n"
 			}
 			for _, tc := range msg.ToolCalls {
-				// 解析 Arguments JSON
-				var input map[string]interface{}
-				_ = json.Unmarshal([]byte(tc.Function.Arguments), &input)
-				if input == nil {
-					input = map[string]interface{}{}
-				}
-				content = append(content, anthropic.ContentBlockParamUnion{
-					OfToolUse: &anthropic.ToolUseBlockParam{
-						ID:    tc.ID,
-						Name:  tc.Function.Name,
-						Input: input,
-					},
-				})
+				textContent += fmt.Sprintf("[调用工具 %s]\nID: %s\n参数: %s\n\n",
+					tc.Function.Name, tc.ID, tc.Function.Arguments)
 			}
 			anthropicMsgs = append(anthropicMsgs, anthropic.MessageParam{
 				Role:    anthropic.MessageParamRoleAssistant,
-				Content: content,
+				Content: []anthropic.ContentBlockParamUnion{anthropic.NewTextBlock(textContent)},
 			})
 		} else {
 			// 普通文本消息

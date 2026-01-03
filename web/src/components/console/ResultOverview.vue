@@ -62,7 +62,13 @@
       @row-click="handleRowClick"
     >
       <el-table-column type="selection" width="55" />
-      <el-table-column prop="host" label="主机" min-width="150" />
+      <el-table-column prop="host" label="主机" min-width="180">
+        <template #default="{ row }">
+          <el-tag :type="getHostTagType(row.host)" effect="dark" size="default">
+            {{ row.host }}
+          </el-tag>
+        </template>
+      </el-table-column>
       <el-table-column prop="status" label="状态" width="100">
         <template #default="{ row }">
           <el-tag :type="row.status === 'success' ? 'success' : 'danger'" size="small">
@@ -259,6 +265,18 @@ const handleExportSelected = () => {
   URL.revokeObjectURL(url)
 
   ElMessage.success('导出成功')
+}
+
+// 为不同主机分配不同颜色
+const hostColorMap = new Map<string, string>()
+const tagTypes = ['', 'success', 'warning', 'danger', 'info'] as const
+
+function getHostTagType(host: string): typeof tagTypes[number] {
+  if (!hostColorMap.has(host)) {
+    const index = hostColorMap.size % tagTypes.length
+    hostColorMap.set(host, tagTypes[index])
+  }
+  return hostColorMap.get(host) as typeof tagTypes[number]
 }
 
 const emit = defineEmits<{

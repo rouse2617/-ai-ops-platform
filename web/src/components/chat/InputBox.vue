@@ -98,7 +98,29 @@
             </div>
           </div>
         </div>
+
+        <!-- Slot Filling Dropdown -->
+        <SlotFillingDropdown
+          ref="slotFillingRef"
+          :visible="showSlotFilling"
+          :slots="slotSuggestions"
+          :slot-type="slotType"
+          :position="menuPosition"
+          @select="selectSlot"
+          @close="closeSlotFilling"
+        />
       </div>
+
+      <!-- Danger Confirmation Dialog -->
+      <DangerConfirmDialog
+        v-if="currentDangerOp"
+        v-model:visible="showDangerDialog"
+        :operation="currentDangerOp"
+        :host-count="currentDangerOp.affectedHosts.length || 1"
+        :estimated-impact="getCommandImpact(currentDangerOp.command)"
+        @confirm="handleDangerConfirm"
+        @cancel="handleDangerCancel"
+      />
 
       <div class="input-actions">
         <el-tooltip content="清空对话" placement="top">
@@ -153,6 +175,12 @@ import { SLASH_COMMANDS, type SlashCommand } from '@/types/chat-ui'
 import { useHostStore } from '@/stores/host'
 import type { Host } from '@/api/host'
 import { useCommandHistory } from '@/composables/useCommandHistory'
+import SlotFillingDropdown from './SlotFillingDropdown.vue'
+import DangerConfirmDialog from './DangerConfirmDialog.vue'
+import { analyzeMessage, type SlotSuggestion } from '@/api/slotFilling'
+import { debounce } from 'lodash-es'
+import { useDangerStore } from '@/stores/danger'
+import { getCommandImpact } from '@/utils/dangerousCommands'
 
 defineProps<{
   disabled: boolean
@@ -165,9 +193,15 @@ const emit = defineEmits<{
 }>()
 
 const hostStore = useHostStore()
+const dangerStore = useDangerStore()
 const inputRef = ref<any>()
 const inputText = ref('')
 const { addCommand, getPrevious, getNext, resetIndex } = useCommandHistory()
+
+// Danger confirmation state
+const showDangerDialog = ref(false)
+const pendingMessage = ref('')
+const currentDangerOp = ref<any>(null)
 
 // Icon mapping for slash commands
 const iconMap: Record<string, any> = {
@@ -198,6 +232,12 @@ const slashMenuIndex = ref(0)
 const hostMenuIndex = ref(0)
 const menuPosition = ref({ top: '0px', left: '0px' })
 
+// Slot filling state
+const showSlotFilling = ref(false)
+const slotSuggestions = ref<SlotSuggestion[]>([])
+const slotType = ref('')
+const slotFillingRef = ref<any>()
+
 // Computed properties
 const filteredCommands = computed(() => {
   const match = inputText.value.match(/\/(\w*)$/)
@@ -219,8 +259,27 @@ const filteredHosts = computed(() => {
 })
 
 const canSend = computed(() => {
-  return inputText.value.trim() && !showSlashMenu.value && !showHostMenu.value
+  return inputText.value.trim() && !showSlashMenu.value && !showHostMenu.value && !showSlotFilling.value
 })
+
+// 防抖分析消息
+const analyzeMessageDebounced = debounce(async (message: string) => {
+  if (!message.trim() || showSlashMenu.value || showHostMenu.value) {
+    return
+  }
+
+  try {
+    const response = await analyzeMessage({ message })
+    if (response.needsSlotFilling) {
+      slotSuggestions.value = response.suggestions
+      slotType.value = response.slotType
+      showSlotFilling.value = true
+      updateMenuPosition()
+    }
+  } catch (error) {
+    console.error('分析消息失败:', error)
+  }
+}, 800)
 
 // Load hosts on mount
 onMounted(async () => {
@@ -259,6 +318,9 @@ const handleInput = () => {
   // Hide menus if no match
   showSlashMenu.value = false
   showHostMenu.value = false
+
+  // 分析是否需要参数补全
+  analyzeMessageDebounced(value)
 }
 
 // Update menu position
@@ -304,8 +366,37 @@ const removeHostChip = (hostId: string) => {
   mentionedHosts.value.delete(hostId)
 }
 
+// Select slot
+const selectSlot = (slot: SlotSuggestion) => {
+  inputText.value = `${inputText.value} ${slot.value}`
+  showSlotFilling.value = false
+  inputRef.value?.focus()
+}
+
+// Close slot filling
+const closeSlotFilling = () => {
+  showSlotFilling.value = false
+}
+
 // Keyboard navigation
 const handleKeydown = (e: KeyboardEvent) => {
+  // Handle slot filling navigation
+  if (showSlotFilling.value) {
+    if (e.key === 'ArrowDown') {
+      e.preventDefault()
+      slotFillingRef.value?.navigateDown()
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault()
+      slotFillingRef.value?.navigateUp()
+    } else if (e.key === 'Enter') {
+      e.preventDefault()
+      slotFillingRef.value?.selectActive()
+    } else if (e.key === 'Escape') {
+      showSlotFilling.value = false
+    }
+    return
+  }
+
   // Handle menu navigation
   if (showSlashMenu.value) {
     if (e.key === 'ArrowDown') {
@@ -372,7 +463,7 @@ const handleKeydown = (e: KeyboardEvent) => {
 }
 
 // Send message
-const handleSend = () => {
+const handleSend = async () => {
   if (!canSend.value) return
 
   // Include mentioned hosts in the message
@@ -383,6 +474,29 @@ const handleSend = () => {
     message = `[目标主机: ${hostNames}]\n${message}`
   }
 
+  // Check for dangerous commands
+  const { level, reason, type } = dangerStore.checkDangerLevel(message)
+
+  if (level === 'high' || level === 'critical') {
+    // Show confirmation dialog
+    pendingMessage.value = message
+    currentDangerOp.value = {
+      id: `op-${Date.now()}`,
+      command: message,
+      type: type || 'modify',
+      riskLevel: level,
+      affectedHosts: selectedHostChips.value.map(h => h.name),
+      reason
+    }
+    showDangerDialog.value = true
+    return
+  }
+
+  // Safe to send
+  sendMessage(message)
+}
+
+const sendMessage = (message: string) => {
   // Add to command history
   addCommand(inputText.value.trim())
 
@@ -391,7 +505,23 @@ const handleSend = () => {
   // Clear input and reset state
   inputText.value = ''
   mentionedHosts.value.clear()
+  showSlotFilling.value = false
   resetIndex()
+}
+
+const handleDangerConfirm = () => {
+  showDangerDialog.value = false
+  if (pendingMessage.value) {
+    sendMessage(pendingMessage.value)
+    pendingMessage.value = ''
+    currentDangerOp.value = null
+  }
+}
+
+const handleDangerCancel = () => {
+  showDangerDialog.value = false
+  pendingMessage.value = ''
+  currentDangerOp.value = null
 }
 
 // Clear input function
@@ -400,6 +530,7 @@ function clearInput() {
   mentionedHosts.value.clear()
   showSlashMenu.value = false
   showHostMenu.value = false
+  showSlotFilling.value = false
   resetIndex()
 }
 
@@ -423,6 +554,7 @@ const handleClickOutside = (e: MouseEvent) => {
   if (!clickedInsideMenu && inputContainer && !inputContainer.contains(target)) {
     showSlashMenu.value = false
     showHostMenu.value = false
+    showSlotFilling.value = false
   }
 }
 </script>

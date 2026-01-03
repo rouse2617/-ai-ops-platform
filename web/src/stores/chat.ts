@@ -2,13 +2,14 @@ import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { ElNotification } from 'element-plus'
 import type { Message, ToolCall, ThinkingStatus, StreamEventType } from '@/api/chat'
-import { fetchStreamChat, getChatHistory, getSessions, createSession, deleteSession } from '@/api/chat'
+import { fetchStreamChat, getChatHistory, getSessions, createSession, deleteSession, updateSessionHosts } from '@/api/chat'
 import { useSystemStore } from './system'
 
 export interface ChatSession {
   id: string
   title: string
   createdAt: string
+  hosts?: string[]
 }
 
 // 智能推荐接口
@@ -158,7 +159,8 @@ export const useChatStore = defineStore('chat', () => {
   // 创建新会话
   async function newSession() {
     try {
-      const { sessionId } = await createSession()
+      // 传入当前选中的主机
+      const { sessionId } = await createSession(selectedHostIds.value.length > 0 ? selectedHostIds.value : undefined)
       currentSessionId.value = sessionId
       messages.value = []
       currentToolCalls.value = []
@@ -486,6 +488,12 @@ export const useChatStore = defineStore('chat', () => {
   // 设置选中的主机
   function setSelectedHosts(hostIds: string[]) {
     selectedHostIds.value = hostIds
+    // 同步到当前会话
+    if (currentSessionId.value) {
+      updateSessionHosts(currentSessionId.value, hostIds).catch(err => {
+        console.error('同步会话主机失败:', err)
+      })
+    }
   }
 
   // 清空当前会话消息

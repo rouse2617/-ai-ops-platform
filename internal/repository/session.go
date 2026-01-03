@@ -15,7 +15,9 @@ type SessionRepository interface {
 	Delete(id string) error
 	AddMessage(sessionID string, msg *model.Message) error
 	GetMessages(sessionID string) ([]*model.Message, error)
+	GetMessagesByHost(sessionID string, hostID string) ([]*model.Message, error)
 	UpdateTitle(sessionID string, title string) error
+	UpdateHosts(sessionID string, hosts []string) error
 }
 
 // sessionRepository 会话仓库实现
@@ -81,8 +83,22 @@ func (r *sessionRepository) GetMessages(sessionID string) ([]*model.Message, err
 	return messages, err
 }
 
+// GetMessagesByHost 获取会话中指定主机的消息
+func (r *sessionRepository) GetMessagesByHost(sessionID string, hostID string) ([]*model.Message, error) {
+	var messages []*model.Message
+	err := r.db.Where("session_id = ? AND host_id = ?", sessionID, hostID).
+		Order("created_at ASC").
+		Find(&messages).Error
+	return messages, err
+}
+
 // UpdateTitle 更新会话标题
 func (r *sessionRepository) UpdateTitle(sessionID string, title string) error {
 	return r.db.Model(&model.Session{}).Where("id = ?", sessionID).Update("title", title).Error
+}
+
+// UpdateHosts 更新会话关联的主机列表
+func (r *sessionRepository) UpdateHosts(sessionID string, hosts []string) error {
+	return r.db.Model(&model.Session{}).Where("id = ?", sessionID).Update("hosts", hosts).Error
 }
 

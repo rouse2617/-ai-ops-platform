@@ -188,7 +188,7 @@ func exampleCacheTTL(memoryCache *cache.MemoryCache) {
 
 // 示例：缓存预热
 func exampleCacheWarmup(memoryCache *cache.MemoryCache, hostService *service.HostService) {
-	ctx := context.Background()
+	_ = context.Background()
 
 	log.Println("开始缓存预热...")
 

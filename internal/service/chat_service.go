@@ -129,9 +129,11 @@ func (s *ChatService) ChatStream(ctx context.Context, req ChatRequest, callback 
 			}
 		case "done":
 			if assistantContent.Len() > 0 {
+				hostID := s.getCurrentHostID(req.Hosts)
 				assistantMsg := &model.Message{
 					ID:        uuid.New().String(),
 					SessionID: req.SessionID,
+					HostID:    hostID,
 					Role:      model.RoleAssistant,
 					Content:   assistantContent.String(),
 					ToolCalls: toolCalls,
@@ -304,9 +306,11 @@ func (s *ChatService) saveUserMessage(req ChatRequest) error {
 		return nil
 	}
 
+	hostID := s.getCurrentHostID(req.Hosts)
 	userMsg := &model.Message{
 		ID:        uuid.New().String(),
 		SessionID: req.SessionID,
+		HostID:    hostID,
 		Role:      model.RoleUser,
 		Content:   req.Message,
 		CreatedAt: time.Now(),
@@ -330,9 +334,11 @@ func (s *ChatService) saveAssistantMessage(req ChatRequest, resp *ChatResponse) 
 		})
 	}
 
+	hostID := s.getCurrentHostID(req.Hosts)
 	assistantMsg := &model.Message{
 		ID:        uuid.New().String(),
 		SessionID: req.SessionID,
+		HostID:    hostID,
 		Role:      model.RoleAssistant,
 		Content:   resp.Reply,
 		ToolCalls: toolCalls,
@@ -406,6 +412,11 @@ func (s *ChatService) DeleteSession(sessionID string) error {
 	return s.sessionRepo.Delete(sessionID)
 }
 
+// UpdateSessionHosts 更新会话关联的主机列表
+func (s *ChatService) UpdateSessionHosts(sessionID string, hosts []string) error {
+	return s.sessionRepo.UpdateHosts(sessionID, hosts)
+}
+
 // loadHistoryFromDB 从数据库加载历史消息
 func (s *ChatService) loadHistoryFromDB(sessionID string) []llm.Message {
 	if sessionID == "" {
@@ -444,4 +455,12 @@ func (s *ChatService) parseToolParams(arguments string) map[string]interface{} {
 		return make(map[string]interface{})
 	}
 	return params
+}
+
+// getCurrentHostID 获取当前活动的主机 ID
+func (s *ChatService) getCurrentHostID(hosts []string) string {
+	if len(hosts) == 0 {
+		return ""
+	}
+	return hosts[0]
 }

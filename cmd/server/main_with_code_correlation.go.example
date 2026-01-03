@@ -1,0 +1,144 @@
+package main
+
+import (
+	"context"
+	"log"
+	"time"
+
+	"ai-pro/internal/api/handler"
+	"ai-pro/internal/model"
+	"ai-pro/internal/monitor"
+	"ai-pro/internal/tool/builtin"
+	"github.com/gin-gonic/gin"
+	"go.uber.org/zap"
+	"gopkg.in/yaml.v3"
+	"os"
+)
+
+type Config struct {
+	Repositories     []RepositoryConfig       `yaml:"repositories"`
+	ServiceMappings  []model.ServiceCodeMapping `yaml:"service_mappings"`
+	Correlation      CorrelationConfig        `yaml:"correlation"`
+	Notification     NotificationConfig       `yaml:"notification"`
+}
+
+type RepositoryConfig struct {
+	Name    string `yaml:"name"`
+	Path    string `yaml:"path"`
+	Enabled bool   `yaml:"enabled"`
+}
+
+type CorrelationConfig struct {
+	TimeWindowMinutes   int     `yaml:"time_window_minutes"`
+	MinScoreThreshold   float64 `yaml:"min_score_threshold"`
+	MaxSuspiciousFiles  int     `yaml:"max_suspicious_files"`
+	MaxCommits          int     `yaml:"max_commits"`
+}
+
+type NotificationConfig struct {
+	Enabled            bool `yaml:"enabled"`
+	AutoDismissSeconds int  `yaml:"auto_dismiss_seconds"`
+	ShowDiffPreview    bool `yaml:"show_diff_preview"`
+}
+
+func main() {
+	// Initialize logger
+	logger, _ := zap.NewProduction()
+	defer logger.Sync()
+
+	// Load configuration
+	config, err := loadConfig("config/code_correlation.yaml")
+	if err != nil {
+		log.Fatalf("Failed to load config: %v", err)
+	}
+
+	// Initialize Git tracker
+	gitTracker := builtin.NewGitChangeTracker("")
+	for _, repo := range config.Repositories {
+		if repo.Enabled {
+			if err := gitTracker.AddRepository(repo.Name, repo.Path); err != nil {
+				logger.Error("Failed to add repository",
+					zap.String("name", repo.Name),
+					zap.Error(err))
+			} else {
+				logger.Info("Repository added",
+					zap.String("name", repo.Name),
+					zap.String("path", repo.Path))
+			}
+		}
+	}
+
+	// Initialize notifier
+	notifier := monitor.NewAlertNotifier(logger)
+
+	// Initialize alert manager with correlator
+	alertManager := monitor.NewAlertManager(notifier, gitTracker, logger)
+
+	// Register service mappings
+	for _, mapping := range config.ServiceMappings {
+		alertManager.RegisterServiceMapping(&mapping)
+		logger.Info("Service mapping registered",
+			zap.String("service", mapping.ServiceName),
+			zap.Int("repositories", len(mapping.Repositories)))
+	}
+
+	// Setup HTTP handlers
+	r := gin.Default()
+
+	// WebSocket endpoint for notifications
+	r.GET("/ws/monitor", func(c *gin.Context) {
+		// WebSocket upgrade logic
+		// notifier.RegisterClient(clientID, conn)
+	})
+
+	// Git change API endpoints
+	gitHandler := handler.NewGitChangeHandler(gitTracker)
+	r.GET("/api/git/:repository/diff/:commit", gitHandler.GetDiff)
+	r.POST("/api/git/commits", gitHandler.GetCommits)
+
+	// Simulate alert handling
+	go simulateAlerts(alertManager, logger)
+
+	logger.Info("Server starting on :8080")
+	if err := r.Run(":8080"); err != nil {
+		log.Fatalf("Failed to start server: %v", err)
+	}
+}
+
+func loadConfig(path string) (*Config, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+
+	var config Config
+	if err := yaml.Unmarshal(data, &config); err != nil {
+		return nil, err
+	}
+
+	return &config, nil
+}
+
+func simulateAlerts(alertManager *monitor.AlertManager, logger *zap.Logger) {
+	// Example: Simulate an alert every 5 minutes
+	ticker := time.NewTicker(5 * time.Minute)
+	defer ticker.Stop()
+
+	for range ticker.C {
+		alert := &monitor.Alert{
+			ID:        "alert-" + time.Now().Format("20060102150405"),
+			Name:      "high_database_latency",
+			Service:   "database",
+			Severity:  "critical",
+			Timestamp: time.Now(),
+			Labels: map[string]string{
+				"database": "postgres",
+				"query":    "SELECT",
+			},
+		}
+
+		if err := alertManager.HandleAlert(context.Background(), alert); err != nil {
+			logger.Error("Failed to handle alert", zap.Error(err))
+		}
+	}
+}

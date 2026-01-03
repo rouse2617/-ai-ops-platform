@@ -7,6 +7,15 @@ export interface Message {
   timestamp?: string | number
 }
 
+export interface HostResult {
+  hostId: string
+  exitCode: number
+  output: string
+  error?: string
+  duration: number
+  timestamp: number
+}
+
 export interface ToolCall {
   id: string
   name: string
@@ -15,6 +24,7 @@ export interface ToolCall {
   result?: string
   error?: string
   status?: 'pending' | 'running' | 'success' | 'error'
+  hostResults?: HostResult[]
 }
 
 export interface ThinkingStatus {
@@ -39,6 +49,7 @@ export interface Session {
   id: string
   title: string
   createdAt: string
+  hosts?: string[]
 }
 
 export type StreamEventType = 'content' | 'tool_call' | 'tool_result' | 'thinking' | 'done' | 'error'
@@ -76,8 +87,12 @@ export function deleteSession(sessionId: string): Promise<void> {
   return request.delete(`/chat/sessions/${sessionId}`)
 }
 
-export function createSession(): Promise<{ sessionId: string }> {
-  return request.post<{ sessionId: string }>('/chat/sessions')
+export function createSession(hosts?: string[]): Promise<{ sessionId: string }> {
+  return request.post<{ sessionId: string }>('/chat/sessions', { hosts })
+}
+
+export function updateSessionHosts(sessionId: string, hosts: string[]): Promise<void> {
+  return request.put(`/chat/sessions/${sessionId}/hosts`, { hosts })
 }
 
 // ============================================================================

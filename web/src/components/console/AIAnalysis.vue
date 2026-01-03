@@ -18,6 +18,51 @@
     </div>
 
     <div v-if="currentAnalysis" class="analysis-result">
+      <!-- 思考链展示 -->
+      <div v-if="currentAnalysis.tool_calls && currentAnalysis.tool_calls.length > 0" class="thinking-chain">
+        <div class="chain-header" @click="toggleThinkingChain">
+          <h4>思考过程</h4>
+          <el-icon :class="{ 'is-expanded': showThinkingChain }">
+            <ArrowDown />
+          </el-icon>
+        </div>
+        <el-collapse-transition>
+          <div v-show="showThinkingChain" class="chain-content">
+            <el-timeline>
+              <el-timeline-item
+                v-for="(toolCall, index) in currentAnalysis.tool_calls"
+                :key="index"
+                :type="toolCall.error ? 'danger' : 'success'"
+                :timestamp="`步骤 ${index + 1}`"
+              >
+                <div class="tool-step">
+                  <div class="tool-step-header">
+                    <span class="tool-name">{{ toolCall.tool }}</span>
+                    <el-tag :type="toolCall.error ? 'danger' : 'success'" size="small">
+                      {{ toolCall.error ? '失败' : '成功' }}
+                    </el-tag>
+                  </div>
+                  <div class="tool-step-body">
+                    <div class="step-section">
+                      <div class="section-label">参数</div>
+                      <pre class="section-code"><code>{{ formatJSON(toolCall.params) }}</code></pre>
+                    </div>
+                    <div v-if="toolCall.result" class="step-section">
+                      <div class="section-label">结果</div>
+                      <pre class="section-code result"><code>{{ formatResult(toolCall.result) }}</code></pre>
+                    </div>
+                    <div v-if="toolCall.error" class="step-section">
+                      <div class="section-label error">错误</div>
+                      <pre class="section-code error"><code>{{ toolCall.error }}</code></pre>
+                    </div>
+                  </div>
+                </div>
+              </el-timeline-item>
+            </el-timeline>
+          </div>
+        </el-collapse-transition>
+      </div>
+
       <div class="result-header">
         <h4>分析结果</h4>
         <div class="result-actions">
@@ -96,7 +141,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
-import { Loading } from '@element-plus/icons-vue'
+import { Loading, ArrowDown } from '@element-plus/icons-vue'
 import { useConsoleStore } from '@/stores/console'
 import { deleteAnalysis } from '@/api/analysis'
 import type { Analysis } from '@/api/analysis'
@@ -106,6 +151,7 @@ const consoleStore = useConsoleStore()
 const analyzing = ref(false)
 const showAnalyzeDialog = ref(false)
 const analyzeQuestion = ref('')
+const showThinkingChain = ref(false)
 
 const hasResults = computed(() => consoleStore.executionResults.length > 0)
 const currentAnalysis = computed(() => consoleStore.currentAnalysis)
@@ -144,6 +190,7 @@ const confirmAnalyze = async () => {
       id: response.id,
       analysis_result: response.analysis_result,
       question: response.question,
+      tool_calls: response.tool_calls,
       created_at: response.created_at,
       results_data: '',
       session_id: ''
@@ -198,6 +245,27 @@ const handleDeleteHistory = async (id: string) => {
 
 const formatTime = (time: string) => {
   return new Date(time).toLocaleString('zh-CN')
+}
+
+const toggleThinkingChain = () => {
+  showThinkingChain.value = !showThinkingChain.value
+}
+
+const formatJSON = (obj: unknown) => {
+  try {
+    return JSON.stringify(obj, null, 2)
+  } catch {
+    return String(obj)
+  }
+}
+
+const formatResult = (result: unknown) => {
+  try {
+    const str = typeof result === 'string' ? result : JSON.stringify(result, null, 2)
+    return str.length > 500 ? str.substring(0, 500) + '...' : str
+  } catch {
+    return String(result)
+  }
 }
 
 onMounted(() => {
@@ -297,7 +365,126 @@ onMounted(() => {
   color: var(--el-text-color-regular);
   font-size: 14px;
 }
+
+/* 思考链样式 */
+.thinking-chain {
+  margin-bottom: 20px;
+  border: 1px solid var(--el-border-color);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.chain-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 15px;
+  background: var(--el-fill-color-light);
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.2s;
+}
+
+.chain-header:hover {
+  background: var(--el-fill-color);
+}
+
+.chain-header h4 {
+  margin: 0;
+  font-size: 14px;
+  color: var(--el-text-color-primary);
+}
+
+.chain-header .el-icon {
+  transition: transform 0.3s;
+  color: var(--el-text-color-secondary);
+}
+
+.chain-header .el-icon.is-expanded {
+  transform: rotate(180deg);
+}
+
+.chain-content {
+  padding: 15px;
+  background: #fff;
+}
+
+.tool-step {
+  background: var(--el-fill-color-light);
+  border-radius: 4px;
+  padding: 12px;
+}
+
+.tool-step-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.tool-name {
+  font-weight: 600;
+  color: var(--el-color-primary);
+  font-size: 14px;
+}
+
+.tool-step-body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.step-section {
+  background: #fff;
+  border-radius: 4px;
+  padding: 8px;
+}
+
+.section-label {
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+  margin-bottom: 6px;
+  font-weight: 500;
+}
+
+.section-label.error {
+  color: var(--el-color-danger);
+}
+
+.section-code {
+  margin: 0;
+  padding: 8px;
+  background: var(--el-fill-color-lighter);
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 4px;
+  font-size: 12px;
+  line-height: 1.5;
+  overflow-x: auto;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.section-code code {
+  font-family: 'Monaco', 'Menlo', 'Consolas', monospace;
+  color: var(--el-text-color-regular);
+}
+
+.section-code.result {
+  background: #f0f9eb;
+  border-color: #e1f3d8;
+}
+
+.section-code.error {
+  background: #fef0f0;
+  border-color: #fde2e2;
+}
+
+.section-code.error code {
+  color: var(--el-color-danger);
+}
 </style>
+
+
 
 
 

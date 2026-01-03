@@ -90,6 +90,8 @@ func InitDB(dsn string) (*gorm.DB, error) {
 		&model.Message{},
 		&model.Config{},
 		&model.Analysis{},
+		&model.HealthCheck{},
+		&model.TrendPrediction{},
 	)
 	if err != nil {
 		return nil, err
@@ -155,6 +157,15 @@ func createPerformanceIndexes(db *gorm.DB) error {
 		ON messages(role)
 	`).Error; err != nil {
 		return fmt.Errorf("创建消息角色索引失败: %w", err)
+	}
+
+	// 为 Message 表创建 session_id + host_id 复合索引
+	// 优化按会话和主机筛选消息的查询（支持主机隔离）
+	if err := db.Exec(`
+		CREATE INDEX IF NOT EXISTS idx_messages_session_host
+		ON messages(session_id, host_id)
+	`).Error; err != nil {
+		return fmt.Errorf("创建消息会话主机索引失败: %w", err)
 	}
 
 	return nil

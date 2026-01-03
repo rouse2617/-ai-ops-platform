@@ -1,0 +1,14 @@
+{
+  "messages": [
+    {
+      "id": "msg-1",
+      "role": "user",
+      "content": "查看系统负载"
+    },
+    {
+      "id": "msg-2",
+      "role": "assistant",
+      "content": "系统负载信息已获取"
+    }
+  ]
+}

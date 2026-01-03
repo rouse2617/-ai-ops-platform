@@ -1,23 +1,41 @@
 package handler
 
 import (
+	"context"
 	"net/http"
 	"time"
 
 	"ai-ops/internal/auth"
+	"ai-ops/internal/model"
 
 	"github.com/gin-gonic/gin"
+	"golang.org/x/crypto/bcrypt"
 )
+
+// UserRepository 用户仓库接口
+type UserRepository interface {
+	GetByUsername(ctx context.Context, username string) (*model.User, error)
+	UpdateLastLogin(ctx context.Context, userID string) error
+}
 
 // AuthHandler 认证处理器
 type AuthHandler struct {
 	jwtManager *auth.JWTManager
+	userRepo   UserRepository
 }
 
 // NewAuthHandler 创建认证处理器
 func NewAuthHandler(jwtManager *auth.JWTManager) *AuthHandler {
 	return &AuthHandler{
 		jwtManager: jwtManager,
+	}
+}
+
+// NewAuthHandlerWithRepo 创建带用户仓库的认证处理器
+func NewAuthHandlerWithRepo(jwtManager *auth.JWTManager, userRepo UserRepository) *AuthHandler {
+	return &AuthHandler{
+		jwtManager: jwtManager,
+		userRepo:   userRepo,
 	}
 }
 
@@ -53,14 +71,9 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		return
 	}
 
-	// TODO: 实际生产环境中，这里应该：
-	// 1. 从数据库查询用户
-	// 2. 使用 bcrypt 验证密码
-	// 3. 检查用户状态是否正常
-
-	// 示例：简单硬编码验证（仅用于演示）
-	// 生产环境应该从数据库验证
-	if !h.validateCredentials(req.Username, req.Password) {
+	// 验证用户凭据
+	user, err := h.validateCredentials(c.Request.Context(), req.Username, req.Password)
+	if err != nil || user == nil {
 		c.JSON(http.StatusUnauthorized, gin.H{
 			"code":    401,
 			"message": "用户名或密码错误",
@@ -68,8 +81,17 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		return
 	}
 
+	// 检查用户状态
+	if user.Status != "active" {
+		c.JSON(http.StatusForbidden, gin.H{
+			"code":    403,
+			"message": "用户已被禁用",
+		})
+		return
+	}
+
 	// 生成 JWT token
-	token, err := h.jwtManager.Generate(req.Username, req.Username)
+	token, err := h.jwtManager.Generate(user.ID, user.Username)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"code":    500,
@@ -78,7 +100,11 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		return
 	}
 
-	// 计算过期时间（24小时后）
+	// 更新最后登录时间
+	if h.userRepo != nil {
+		_ = h.userRepo.UpdateLastLogin(c.Request.Context(), user.ID)
+	}
+
 	expiresAt := time.Now().Add(24 * time.Hour).Unix()
 
 	c.JSON(http.StatusOK, gin.H{
@@ -87,8 +113,8 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		"data": LoginResponse{
 			Token:     token,
 			ExpiresAt: expiresAt,
-			UserID:    req.Username,
-			Username:  req.Username,
+			UserID:    user.ID,
+			Username:  user.Username,
 		},
 	})
 }
@@ -105,7 +131,6 @@ func (h *AuthHandler) RefreshToken(c *gin.Context) {
 		return
 	}
 
-	// 刷新 token
 	newToken, err := h.jwtManager.Refresh(req.Token)
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{
@@ -115,7 +140,6 @@ func (h *AuthHandler) RefreshToken(c *gin.Context) {
 		return
 	}
 
-	// 计算过期时间
 	expiresAt := time.Now().Add(24 * time.Hour).Unix()
 
 	c.JSON(http.StatusOK, gin.H{
@@ -139,7 +163,6 @@ func (h *AuthHandler) ValidateToken(c *gin.Context) {
 		return
 	}
 
-	// 移除 "Bearer " 前缀
 	if len(token) > 7 && token[:7] == "Bearer " {
 		token = token[7:]
 	}
@@ -166,8 +189,6 @@ func (h *AuthHandler) ValidateToken(c *gin.Context) {
 
 // Logout 用户登出
 func (h *AuthHandler) Logout(c *gin.Context) {
-	// JWT 是无状态的，登出主要在前端删除 token
-	// 如果需要实现强制失效，可以使用 Redis 黑名单
 	c.JSON(http.StatusOK, gin.H{
 		"code":    200,
 		"message": "登出成功",
@@ -175,19 +196,43 @@ func (h *AuthHandler) Logout(c *gin.Context) {
 }
 
 // validateCredentials 验证用户凭据
-// TODO: 生产环境中应该从数据库验证，使用 bcrypt
-func (h *AuthHandler) validateCredentials(username, password string) bool {
-	// 示例：硬编码的演示账户
-	// 生产环境必须从数据库验证并使用 bcrypt
-	validUsers := map[string]string{
-		"admin":     "admin123",
-		"operator":  "operator123",
+func (h *AuthHandler) validateCredentials(ctx context.Context, username, password string) (*model.User, error) {
+	// 优先使用数据库验证
+	if h.userRepo != nil {
+		user, err := h.userRepo.GetByUsername(ctx, username)
+		if err != nil {
+			return nil, err
+		}
+		if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(password)); err != nil {
+			return nil, err
+		}
+		return user, nil
 	}
 
-	storedPassword, exists := validUsers[username]
-	if !exists {
-		return false
+	// 回退到演示账户（仅开发环境）
+	demoUsers := map[string]string{
+		"admin":    "admin123",
+		"operator": "operator123",
 	}
 
-	return password == storedPassword
+	storedPassword, exists := demoUsers[username]
+	if !exists || password != storedPassword {
+		return nil, nil
+	}
+
+	return &model.User{
+		ID:       username,
+		Username: username,
+		Role:     "admin",
+		Status:   "active",
+	}, nil
+}
+
+// HashPassword 生成密码哈希（工具函数）
+func HashPassword(password string) (string, error) {
+	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	if err != nil {
+		return "", err
+	}
+	return string(hash), nil
 }
