@@ -48,7 +48,7 @@ import { computed } from 'vue'
 import { useRoute } from 'vue-router'
 import {
   ChatDotRound, Monitor, SetUp, Document,
-  List, Setting, InfoFilled, Tickets
+  List, Setting, InfoFilled, Tickets, Connection
 } from '@element-plus/icons-vue'
 import MCPStatusIndicator from './MCPStatusIndicator.vue'
 
@@ -67,6 +67,7 @@ const menuItems = [
   { path: '/scripts', title: '脚本管理', icon: Document },
   { path: '/tasks', title: '任务历史', icon: List },
   { path: '/ops', title: '运维控制台', icon: Tickets },
+  { path: '/mcp', title: 'MCP 配置', icon: Connection },
   { path: '/settings', title: '安全设置', icon: Setting },
 ]
 </script>

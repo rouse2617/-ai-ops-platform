@@ -1,6 +1,7 @@
 package mcp
 
 import (
+	"context"
 	"fmt"
 	"sort"
 	"sync"
@@ -13,7 +14,7 @@ import (
 
 // Manager MCP 管理器
 type Manager struct {
-	clients  map[string]*Client
+	clients  map[string]MCPClient
 	adapters map[string]*Adapter
 	registry *tool.Registry
 	mu       sync.RWMutex
@@ -22,13 +23,13 @@ type Manager struct {
 // NewManager 创建 MCP 管理器
 func NewManager(registry *tool.Registry) *Manager {
 	return &Manager{
-		clients:  make(map[string]*Client),
+		clients:  make(map[string]MCPClient),
 		adapters: make(map[string]*Adapter),
 		registry: registry,
 	}
 }
 
-// RegisterClient 注册 MCP 客户端
+// RegisterClient 注册 MCP 客户端 (HTTP)
 func (m *Manager) RegisterClient(cfg Config) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -43,22 +44,46 @@ func (m *Manager) RegisterClient(cfg Config) error {
 		return fmt.Errorf("创建 MCP 客户端失败: %w", err)
 	}
 
-	// 测试连接
-	if err := client.GetHealth(nil); err != nil {
-		logger.Warn("MCP server 健康检查失败",
-			zap.String("name", cfg.Name),
-			zap.Error(err),
-		)
-		// 不阻止启动，只记录警告
+	return m.registerClientInternal(client)
+}
+
+// RegisterStdioClient 注册 stdio 协议 MCP 客户端
+func (m *Manager) RegisterStdioClient(cfg StdioConfig) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if !cfg.Enabled {
+		logger.Info("MCP server 已禁用，跳过", zap.String("name", cfg.Name))
+		return nil
 	}
 
-	m.clients[cfg.Name] = client
+	client, err := NewStdioClient(cfg)
+	if err != nil {
+		return fmt.Errorf("创建 stdio MCP 客户端失败: %w", err)
+	}
+
+	return m.registerClientInternal(client)
+}
+
+// registerClientInternal 内部注册客户端
+func (m *Manager) registerClientInternal(client MCPClient) error {
+	ctx := context.Background()
+
+	// 测试连接
+	if err := client.GetHealth(ctx); err != nil {
+		logger.Warn("MCP server 健康检查失败",
+			zap.String("name", client.Name()),
+			zap.Error(err),
+		)
+	}
+
+	m.clients[client.Name()] = client
 
 	// 加载该 MCP server 的工具
-	tools, err := client.ListTools(nil)
+	tools, err := client.ListTools(ctx)
 	if err != nil {
 		logger.Warn("获取 MCP 工具列表失败",
-			zap.String("server", cfg.Name),
+			zap.String("server", client.Name()),
 			zap.Error(err),
 		)
 		return err
@@ -78,7 +103,7 @@ func (m *Manager) RegisterClient(cfg Config) error {
 		}
 
 		logger.Info("注册 MCP 工具",
-			zap.String("server", cfg.Name),
+			zap.String("server", client.Name()),
 			zap.String("tool", adapter.Name()),
 			zap.String("description", mcpTool.Description),
 		)
@@ -94,7 +119,7 @@ func (m *Manager) UnregisterClient(name string) {
 
 	// 注销相关工具
 	for toolName, adapter := range m.adapters {
-		if adapter.mcpClient.name == name {
+		if adapter.mcpClient.Name() == name {
 			m.registry.Unregister(toolName)
 			delete(m.adapters, toolName)
 
@@ -105,6 +130,10 @@ func (m *Manager) UnregisterClient(name string) {
 		}
 	}
 
+	// 关闭客户端
+	if client, ok := m.clients[name]; ok {
+		client.Close()
+	}
 	delete(m.clients, name)
 
 	logger.Info("注销 MCP 客户端",
@@ -126,7 +155,7 @@ func (m *Manager) ListClients() []string {
 }
 
 // GetClient 获取客户端
-func (m *Manager) GetClient(name string) (*Client, bool) {
+func (m *Manager) GetClient(name string) (MCPClient, bool) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
@@ -146,7 +175,7 @@ func (m *Manager) GetStats() map[string]interface{} {
 	// 按服务器统计工具数量
 	toolsByServer := make(map[string]int)
 	for _, adapter := range m.adapters {
-		serverName := adapter.mcpClient.name
+		serverName := adapter.mcpClient.Name()
 		toolsByServer[serverName]++
 	}
 	stats["tools_by_server"] = toolsByServer
@@ -165,9 +194,10 @@ func (m *Manager) HealthCheck() map[string]error {
 
 	for name, client := range m.clients {
 		wg.Add(1)
-		go func(name string, client *Client) {
+		go func(name string, client MCPClient) {
 			defer wg.Done()
-			err := client.GetHealth(nil)
+			ctx := context.Background()
+			err := client.GetHealth(ctx)
 			mu.Lock()
 			results[name] = err
 			mu.Unlock()
@@ -176,4 +206,34 @@ func (m *Manager) HealthCheck() map[string]error {
 
 	wg.Wait()
 	return results
+}
+
+// GetServerTools 获取指定服务器的工具列表
+func (m *Manager) GetServerTools(serverName string) []Tool {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	tools := make([]Tool, 0)
+	for _, adapter := range m.adapters {
+		if adapter.mcpClient.Name() == serverName {
+			tools = append(tools, adapter.mcpTool)
+		}
+	}
+	return tools
+}
+
+// GetAllTools 获取所有 MCP 工具
+func (m *Manager) GetAllTools() map[string][]Tool {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	result := make(map[string][]Tool)
+	for _, adapter := range m.adapters {
+		serverName := adapter.mcpClient.Name()
+		if result[serverName] == nil {
+			result[serverName] = make([]Tool, 0)
+		}
+		result[serverName] = append(result[serverName], adapter.mcpTool)
+	}
+	return result
 }

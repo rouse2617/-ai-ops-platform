@@ -7,6 +7,7 @@ import (
 	"ai-ops/internal/cache"
 	"ai-ops/internal/config"
 	"ai-ops/internal/llm"
+	"ai-ops/internal/mcp"
 	"ai-ops/internal/monitor"
 	"ai-ops/internal/repository"
 	"ai-ops/internal/security"
@@ -19,27 +20,28 @@ import (
 
 // RouterConfig 路由配置
 type RouterConfig struct {
-	SSHPool         *ssh.Pool
-	ToolRegistry    *tool.Registry
-	PolicyStore     *security.PolicyStore
-	AuditLogger     *security.AuditLogger
-	HostRepo        repository.HostRepository
-	SessionRepo     repository.SessionRepository
-	GroupRepo       repository.GroupRepository
-	ConfigRepo      repository.ConfigRepository
-	AnalysisRepo    repository.AnalysisRepository
-	HealthRepo      *repository.HealthCheckRepository
-	TrendRepo       *repository.TrendPredictionRepository
-	LLMClient       *llm.OpenAIClient
-	Cache           cache.Cache // 可选的缓存
-	Version         string
-	Mode            string // debug / release
-	Config          *config.Config
+	SSHPool          *ssh.Pool
+	ToolRegistry     *tool.Registry
+	PolicyStore      *security.PolicyStore
+	AuditLogger      *security.AuditLogger
+	HostRepo         repository.HostRepository
+	SessionRepo      repository.SessionRepository
+	GroupRepo        repository.GroupRepository
+	ConfigRepo       repository.ConfigRepository
+	AnalysisRepo     repository.AnalysisRepository
+	HealthRepo       *repository.HealthCheckRepository
+	TrendRepo        *repository.TrendPredictionRepository
+	LLMClient        *llm.OpenAIClient
+	Cache            cache.Cache // 可选的缓存
+	Version          string
+	Mode             string // debug / release
+	Config           *config.Config
 	MonitorDetector  *monitor.AnomalyDetector
 	MonitorNotifier  *monitor.AlertNotifier
 	MonitorScheduler *monitor.MonitorScheduler
 	MonitorHandler   *handler.MonitorHandler
-	PrometheusAddr   string // Prometheus 服务地址
+	PrometheusAddr   string       // Prometheus 服务地址
+	MCPManager       *mcp.Manager // MCP 管理器
 }
 
 // NewRouter 创建路由
@@ -233,20 +235,7 @@ func NewRouter(cfg RouterConfig) *gin.Engine {
 				}
 			}
 
-			// Prometheus 集成 API（如果已配置）
-			if cfg.PrometheusAddr != "" {
-				promHandler, err := handler.NewPrometheusHandler(cfg.PrometheusAddr)
-				if err == nil {
-					promGroup := protected.Group("/prometheus")
-					{
-						promGroup.POST("/incident-replay", promHandler.QueryIncidentMetrics)
-						promGroup.POST("/capacity-planning", promHandler.AnalyzeCapacityPlanning)
-						promGroup.POST("/query", promHandler.QueryPrometheus)
-						promGroup.GET("/metrics", promHandler.GetMetricsMetadata)
-						promGroup.GET("/labels/:label", promHandler.GetLabelValues)
-					}
-				}
-			}
+			// Prometheus 集成 API 已移除（功能待重构）
 
 			// 健康检查 API（如果已配置）
 			if healthHandler != nil {
@@ -265,6 +254,24 @@ func NewRouter(cfg RouterConfig) *gin.Engine {
 					trendGroup.POST("/analyze", trendHandler.AnalyzeTrends)
 					trendGroup.GET("/predictions", trendHandler.GetPredictions)
 					trendGroup.GET("/alerts", trendHandler.GetAlerts)
+				}
+			}
+
+			// MCP 管理 API
+			if cfg.MCPManager != nil {
+				mcpHandler := handler.NewMCPHandler(cfg.MCPManager, cfg.ToolRegistry)
+				mcpGroup := protected.Group("/mcp")
+				{
+					// MCP 客户端管理
+					mcpGroup.GET("/servers", mcpHandler.ListServers)
+					mcpGroup.POST("/servers", mcpHandler.AddServer)
+					mcpGroup.DELETE("/servers/:name", mcpHandler.RemoveServer)
+					mcpGroup.GET("/servers/:name/tools", mcpHandler.GetServerTools)
+					mcpGroup.GET("/tools", mcpHandler.GetAllTools)
+					mcpGroup.GET("/stats", mcpHandler.GetStats)
+					mcpGroup.GET("/health", mcpHandler.HealthCheck)
+					// MCP 服务端（暴露内置工具给外部客户端）
+					mcpGroup.POST("/rpc", mcpHandler.HandleJSONRPC)
 				}
 			}
 		}

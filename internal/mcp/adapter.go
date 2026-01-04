@@ -9,12 +9,12 @@ import (
 
 // Adapter 将 MCP 工具适配为内部 Tool 接口
 type Adapter struct {
-	mcpClient *Client
+	mcpClient MCPClient
 	mcpTool   Tool
 }
 
 // NewAdapter 创建 MCP 工具适配器
-func NewAdapter(client *Client, mcpTool Tool) *Adapter {
+func NewAdapter(client MCPClient, mcpTool Tool) *Adapter {
 	return &Adapter{
 		mcpClient: client,
 		mcpTool:   mcpTool,
@@ -23,13 +23,13 @@ func NewAdapter(client *Client, mcpTool Tool) *Adapter {
 
 // Name 返回工具名称
 func (a *Adapter) Name() string {
-	return fmt.Sprintf("mcp_%s_%s", a.mcpClient.name, a.mcpTool.Name)
+	return fmt.Sprintf("mcp_%s_%s", a.mcpClient.Name(), a.mcpTool.Name)
 }
 
 // Description 返回工具描述
 func (a *Adapter) Description() string {
 	desc := a.mcpTool.Description
-	return fmt.Sprintf("[MCP:%s] %s", a.mcpClient.name, desc)
+	return fmt.Sprintf("[MCP:%s] %s", a.mcpClient.Name(), desc)
 }
 
 // Parameters 返回参数定义（将 MCP Schema 转换为内部格式）

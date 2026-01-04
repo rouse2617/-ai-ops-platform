@@ -5,7 +5,7 @@ import (
 	"sync"
 	"time"
 
-	"ai-pro/internal/model"
+	"ai-ops/internal/model"
 
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"

@@ -43,6 +43,12 @@ const routes: RouteRecordRaw[] = [
     meta: { title: '安全设置' }
   },
   {
+    path: '/mcp',
+    name: 'MCPSettings',
+    component: () => import('@/views/MCPSettings.vue'),
+    meta: { title: 'MCP 工具配置' }
+  },
+  {
     path: '/console',
     name: 'Console',
     component: () => import('@/views/Console.vue'),

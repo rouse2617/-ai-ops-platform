@@ -5,11 +5,13 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"ai-ops/internal/api"
 	"ai-ops/internal/cache"
 	"ai-ops/internal/config"
 	"ai-ops/internal/llm"
+	"ai-ops/internal/mcp"
 	"ai-ops/internal/model"
 	"ai-ops/internal/repository"
 	"ai-ops/internal/security"
@@ -17,7 +19,6 @@ import (
 	"ai-ops/internal/tool"
 	"ai-ops/internal/tool/builtin"
 	"ai-ops/pkg/logger"
-	"time"
 
 	"go.uber.org/zap"
 )
@@ -212,6 +213,33 @@ func main() {
 	}
 	logger.Info("工具注册表初始化完成", zap.Int("tool_count", toolRegistry.Count()))
 
+	// 4.2 初始化 MCP 管理器并加载 MCP 服务器
+	mcpManager := mcp.NewManager(toolRegistry)
+	for _, mcpCfg := range cfg.MCP {
+		timeout := time.Duration(mcpCfg.Timeout) * time.Second
+		if timeout == 0 {
+			timeout = 30 * time.Second
+		}
+		if err := mcpManager.RegisterClient(mcp.Config{
+			Name:    mcpCfg.Name,
+			URL:     mcpCfg.URL,
+			Timeout: timeout,
+			Enabled: mcpCfg.Enabled,
+		}); err != nil {
+			logger.Warn("注册 MCP 客户端失败",
+				zap.String("name", mcpCfg.Name),
+				zap.Error(err),
+			)
+		}
+	}
+	if len(cfg.MCP) > 0 {
+		stats := mcpManager.GetStats()
+		logger.Info("MCP 管理器初始化完成",
+			zap.Int("clients", stats["clients"].(int)),
+			zap.Int("adapters", stats["adapters"].(int)),
+		)
+	}
+
 	// 5. 初始化缓存（可选）
 	var cacheInstance cache.Cache
 	// 如果需要启用缓存，取消下面注释
@@ -236,6 +264,7 @@ func main() {
 		Version:      Version,
 		Mode:         cfg.Server.Mode,
 		Config:       cfg,
+		MCPManager:   mcpManager,
 	})
 
 	// 记录认证状态

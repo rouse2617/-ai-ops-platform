@@ -3,7 +3,7 @@
     class="chat-window-container"
     :class="[
       `layout-${layout}`,
-      { 'left-panel-hidden': !leftPanelVisible, 'right-panel-hidden': !rightPanelVisible }
+      { 'left-panel-hidden': !leftPanelVisible }
     ]"
   >
     <!-- 左侧面板 - 历史记录 (仅桌面端显示) -->
@@ -105,15 +105,6 @@
           </div>
         </div>
 
-        <!-- 右侧面板切换按钮 -->
-        <el-button
-          v-if="layout !== 'single-column'"
-          class="panel-toggle-button"
-          :icon="rightPanelVisible ? Expand : Fold"
-          @click="handleToggleRightPanel"
-          circle
-          title="切换监控面板"
-        />
       </div>
 
       <!-- 消息列表 -->
@@ -129,6 +120,14 @@
           @regenerate="handleRegenerate"
           @tool-rerun="handleToolRerun"
         />
+
+        <!-- Prometheus 集成组件 -->
+        <PrometheusIntegration
+          ref="prometheusRef"
+          :message-content="lastUserMessage"
+          @send-message="handleSendFromList"
+          @execute-action="handlePrometheusAction"
+        />
       </div>
 
       <!-- 输入区域 -->
@@ -142,49 +141,6 @@
       </div>
     </main>
 
-    <!-- 右侧面板 - 上下文/监控 (桌面端和平板端显示) -->
-    <aside
-      v-if="layout !== 'single-column' && rightPanelVisible"
-      class="context-panel"
-    >
-      <div class="panel-header">
-        <h3 class="panel-title">
-          <el-icon><DataAnalysis /></el-icon>
-          <span>实时监控</span>
-        </h3>
-        <el-switch
-          v-model="silentMode"
-          size="small"
-          active-text="静默"
-          inactive-text=""
-        />
-      </div>
-      <div class="context-content">
-        <!-- 监控图表 -->
-        <template v-if="selectedHostIds.length > 0">
-          <div v-for="hostId in selectedHostIds.slice(0, 3)" :key="hostId" class="host-monitor-section">
-            <div class="host-monitor-header">
-              <el-icon><Monitor /></el-icon>
-              <span>{{ hostId }}</span>
-            </div>
-            <MonitorChart :host-id="hostId" metric="cpu" height="120px" @anomaly-click="handleAnomalyClick" />
-            <MonitorChart :host-id="hostId" metric="memory" height="120px" @anomaly-click="handleAnomalyClick" />
-          </div>
-
-          <!-- 智能操作面板 -->
-          <ContextualActionsPanel
-            :host-id="selectedHostIds[0]"
-            :tool-results="latestToolResults"
-            @execute="handleContextualAction"
-          />
-        </template>
-        <!-- 监控内容占位 -->
-        <div v-else class="monitor-placeholder">
-          <el-icon :size="48" color="#c0c4cc"><DataAnalysis /></el-icon>
-          <p>选择主机查看监控数据</p>
-        </div>
-      </div>
-    </aside>
 
     <!-- 移动端历史面板遮罩 -->
     <transition name="overlay-fade">
@@ -257,23 +213,23 @@ import { computed, ref, onMounted, watch } from 'vue'
 import { useChatStore } from '@/stores/chat'
 import { useUIStore } from '@/stores/ui'
 import { usePanelSync } from '@/composables/usePanelSync'
-import type { Message, ToolCall } from '@/api/chat'
+import type { Message } from '@/api/chat'
 import {
   ChatDotRound, ArrowDown, Plus, Delete,
-  Monitor, Menu, Close, Expand, Fold, DataAnalysis
+  Monitor, Menu, Close
 } from '@element-plus/icons-vue'
 import { ElMessageBox, ElMessage } from 'element-plus'
 import MessageList from './MessageList.vue'
 import InputBox from './InputBox.vue'
 import HostSelector from './HostSelector.vue'
-import MonitorChart from './MonitorChart.vue'
-import ContextualActionsPanel from './ContextualActionsPanel.vue'
+import PrometheusIntegration from './PrometheusIntegration.vue'
 
 const chatStore = useChatStore()
 const uiStore = useUIStore()
 const { syncToHost } = usePanelSync()
 const messageListRef = ref()
 const inputBoxRef = ref()
+const prometheusRef = ref()
 
 // Chat store state
 const messages = computed(() => chatStore.messages)
@@ -287,34 +243,9 @@ const currentSessionId = computed(() => chatStore.currentSessionId)
 // UI store state
 const layout = computed(() => uiStore.layout)
 const leftPanelVisible = computed(() => uiStore.leftPanelVisible)
-const rightPanelVisible = computed(() => uiStore.rightPanelVisible)
 const historyPanelOverlayVisible = computed(() => uiStore.historyPanelOverlayVisible)
 
 // Local state
-const silentMode = ref(false)
-
-// 从最近的消息中提取工具执行结果
-const latestToolResults = computed(() => {
-  const results: Array<{ tool_name: string; result: unknown; host_id?: string }> = []
-
-  // 从最近的 5 条消息中提取工具调用结果
-  const recentMessages = messages.value.slice(-5)
-  for (const msg of recentMessages) {
-    if (msg.role === 'assistant' && msg.toolCalls) {
-      for (const tc of msg.toolCalls) {
-        if (tc.status === 'success' && tc.result) {
-          results.push({
-            tool_name: tc.name,
-            result: tc.result,
-            host_id: selectedHostIds.value[0]
-          })
-        }
-      }
-    }
-  }
-
-  return results
-})
 
 const selectedHostIds = computed({
   get: () => chatStore.selectedHostIds,
@@ -325,6 +256,19 @@ const currentSessionTitle = computed(() => {
   const session = sessions.value.find(s => s.id === chatStore.currentSessionId)
   return session?.title || '新对话'
 })
+
+// 获取最后一条用户消息（用于 Prometheus 意图检测）
+const lastUserMessage = computed(() => {
+  const userMessages = messages.value.filter(m => m.role === 'user')
+  return userMessages.length > 0 ? userMessages[userMessages.length - 1].content : ''
+})
+
+// Prometheus 操作处理
+const handlePrometheusAction = async (action: { id: string; command?: string }) => {
+  if (action.command) {
+    await chatStore.sendMessage(`执行命令: ${action.command}`)
+  }
+}
 
 // Initialize UI store and load sessions
 onMounted(async () => {
@@ -440,10 +384,6 @@ const handleClearMessages = async () => {
 }
 
 // Panel toggle handlers
-const handleToggleRightPanel = () => {
-  uiStore.togglePanel('right')
-}
-
 const handleToggleHistoryOverlay = () => {
   uiStore.toggleHistoryOverlay()
 }
@@ -461,21 +401,6 @@ const handleSessionSelectFromOverlay = async (sessionId: string) => {
   await chatStore.switchSession(sessionId)
   uiStore.closeHistoryOverlay()
 }
-
-// 监控面板事件处理
-const handleAnomalyClick = (timestamp: number) => {
-  // 跳转到对应时间的日志
-  console.log('Anomaly clicked at:', timestamp)
-}
-
-// 处理上下文相关的智能操作
-const handleContextualAction = (command: string, action: any) => {
-  // 将操作转换为聊天消息发送
-  const message = action.command
-    ? `请在主机 ${selectedHostIds.value[0]} 上执行: ${action.label} (${action.command})`
-    : `请在主机 ${selectedHostIds.value[0]} 上执行: ${action.label}`
-  chatStore.sendMessage(message)
-}
 </script>
 
 <style scoped>
@@ -492,30 +417,18 @@ const handleContextualAction = (command: string, action: any) => {
 
 /* 三栏布局 (>1200px) */
 .layout-three-column {
-  grid-template-columns: 280px 1fr minmax(300px, 360px);
-  grid-template-areas: "history chat context";
+  grid-template-columns: 280px 1fr;
+  grid-template-areas: "history chat";
 }
 
 .layout-three-column.left-panel-hidden {
-  grid-template-columns: 0 1fr minmax(300px, 360px);
-}
-
-.layout-three-column.right-panel-hidden {
-  grid-template-columns: 280px 1fr 0;
-}
-
-.layout-three-column.left-panel-hidden.right-panel-hidden {
-  grid-template-columns: 0 1fr 0;
+  grid-template-columns: 0 1fr;
 }
 
 /* 两栏布局 (768px - 1200px) */
 .layout-two-column {
-  grid-template-columns: 1fr minmax(280px, 320px);
-  grid-template-areas: "chat context";
-}
-
-.layout-two-column.right-panel-hidden {
-  grid-template-columns: 1fr 0;
+  grid-template-columns: 1fr;
+  grid-template-areas: "chat";
 }
 
 /* 单栏布局 (<768px) */
@@ -769,94 +682,6 @@ const handleContextualAction = (command: string, action: any) => {
   background: #fff;
   flex-shrink: 0;
   box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.03);
-}
-
-/* ============================================
- * 右侧上下文面板
- * ============================================ */
-.context-panel {
-  grid-area: context;
-  display: flex;
-  flex-direction: column;
-  background: linear-gradient(180deg, #FAFBFC 0%, #F5F7FA 100%);
-  border-left: none;
-  overflow: hidden;
-  box-shadow: -2px 0 8px rgba(0, 0, 0, 0.03);
-}
-
-.context-panel .panel-header {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  border-bottom: none;
-  color: #fff;
-}
-
-.context-panel .panel-header .panel-title {
-  color: #fff;
-}
-
-.context-panel .panel-title {
-  color: #fff;
-}
-
-.context-content {
-  flex: 1;
-  overflow-y: auto;
-  padding: var(--spacing-4);
-  background: transparent;
-}
-
-.monitor-placeholder {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  height: 100%;
-  color: var(--color-gray-400);
-  text-align: center;
-  background: rgba(255, 255, 255, 0.5);
-  border-radius: 12px;
-  margin: 16px;
-  padding: 32px;
-}
-
-.monitor-placeholder p {
-  margin-top: var(--spacing-2);
-  font-size: var(--text-sm);
-}
-
-.monitor-placeholder .hint {
-  font-size: var(--text-xs);
-  color: var(--color-gray-300);
-}
-
-/* 主机监控区域样式 */
-.host-monitor-section {
-  margin-bottom: var(--spacing-4);
-  padding: var(--spacing-4);
-  background: #fff;
-  border-radius: 12px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
-  transition: all 0.2s ease;
-}
-
-.host-monitor-section:hover {
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
-}
-
-.host-monitor-section:last-child {
-  margin-bottom: var(--spacing-4);
-}
-
-.host-monitor-header {
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-2);
-  margin-bottom: var(--spacing-3);
-  padding-bottom: var(--spacing-2);
-  border-bottom: 1px solid #f0f0f0;
-  font-size: var(--text-sm);
-  font-weight: var(--font-semibold);
-  color: var(--color-gray-700);
 }
 
 /* ============================================

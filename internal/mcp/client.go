@@ -164,3 +164,13 @@ func (c *Client) GetHealth(ctx context.Context) error {
 
 	return nil
 }
+
+// Name 返回客户端名称
+func (c *Client) Name() string {
+	return c.name
+}
+
+// Close 关闭客户端
+func (c *Client) Close() error {
+	return nil
+}

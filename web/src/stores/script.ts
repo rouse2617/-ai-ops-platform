@@ -24,14 +24,38 @@ export const useScriptStore = defineStore('script', () => {
     try {
       const data: any = await getScripts(params)
       if (Array.isArray(data)) {
-        scripts.value = data
+        // 确保每个脚本都有必要的字段
+        scripts.value = data.map((s: any) => ({
+          id: s.id || s.name || '',
+          name: s.name || '',
+          description: s.description || '',
+          language: s.language || 'bash',
+          content: s.content || '',
+          parameters: s.parameters || [],
+          enabled: s.enabled ?? true,
+          createdAt: s.createdAt,
+          updatedAt: s.updatedAt
+        }))
         total.value = data.length
       } else {
-        scripts.value = Array.isArray(data?.list) ? data.list : []
+        const list = Array.isArray(data?.list) ? data.list : []
+        scripts.value = list.map((s: any) => ({
+          id: s.id || s.name || '',
+          name: s.name || '',
+          description: s.description || '',
+          language: s.language || 'bash',
+          content: s.content || '',
+          parameters: s.parameters || [],
+          enabled: s.enabled ?? true,
+          createdAt: s.createdAt,
+          updatedAt: s.updatedAt
+        }))
         total.value = typeof data?.total === 'number' ? data.total : scripts.value.length
       }
     } catch (error) {
       console.error('加载脚本列表失败:', error)
+      scripts.value = []
+      total.value = 0
     } finally {
       loading.value = false
     }

@@ -12,7 +12,7 @@ import (
 )
 
 // SetupRoutes 设置路由
-func SetupRoutes(r *gin.Engine, db *gorm.DB, sshPool *ssh.Pool, promAddr string) {
+func SetupRoutes(r *gin.Engine, db *gorm.DB, sshPool *ssh.Pool) {
 	// 初始化仓库
 	hostRepo := repository.NewHostRepository(db)
 	operationRepo := repository.NewOperationRepository(db)
@@ -32,16 +32,6 @@ func SetupRoutes(r *gin.Engine, db *gorm.DB, sshPool *ssh.Pool, promAddr string)
 	operationHandler := handler.NewOperationHandler(operationService, confirmMgr)
 	healthHandler := handler.NewHealthHandler(healthService)
 	trendHandler := handler.NewTrendHandler(trendService)
-
-	var prometheusHandler *handler.PrometheusHandler
-	if promAddr != "" {
-		var err error
-		prometheusHandler, err = handler.NewPrometheusHandler(promAddr)
-		if err != nil {
-			// Log error but continue without Prometheus
-			_ = err
-		}
-	}
 
 	// API 路由组
 	api := r.Group("/api")
@@ -70,21 +60,6 @@ func SetupRoutes(r *gin.Engine, db *gorm.DB, sshPool *ssh.Pool, promAddr string)
 			trends.POST("/analyze", trendHandler.AnalyzeTrends)
 			trends.GET("/predictions", trendHandler.GetPredictions)
 			trends.GET("/alerts", trendHandler.GetAlerts)
-		}
-
-		// Prometheus 相关路由
-		if prometheusHandler != nil {
-			prom := api.Group("/prometheus")
-			{
-				prom.POST("/query", prometheusHandler.QueryPrometheus)
-				prom.GET("/metrics/metadata", prometheusHandler.GetMetricsMetadata)
-				prom.GET("/labels/:label/values", prometheusHandler.GetLabelValues)
-				prom.POST("/incident/metrics", prometheusHandler.QueryIncidentMetrics)
-				prom.POST("/capacity/analyze", prometheusHandler.AnalyzeCapacityPlanning)
-				prom.POST("/translate", prometheusHandler.TranslateMetric)
-				prom.POST("/promql/generate", prometheusHandler.GeneratePromQL)
-				prom.POST("/anomaly/detect", prometheusHandler.DetectAnomaly)
-			}
 		}
 	}
 }

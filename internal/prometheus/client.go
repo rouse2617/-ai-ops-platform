@@ -10,6 +10,9 @@ import (
 	"github.com/prometheus/common/model"
 )
 
+// Client Prometheus 客户端别名
+type Client = PrometheusClient
+
 // PrometheusClient Prometheus 客户端
 type PrometheusClient struct {
 	client v1.API

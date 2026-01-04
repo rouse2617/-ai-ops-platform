@@ -78,15 +78,8 @@ const getToolIcon = (type: string) => {
   return type === 'builtin' ? SetUp : Document
 }
 
-const handleToggle = async (enabled: boolean) => {
-  toggling.value = true
-  try {
-    emit('toggle', props.tool.name, enabled)
-  } finally {
-    setTimeout(() => {
-      toggling.value = false
-    }, 300)
-  }
+const handleToggle = (enabled: boolean) => {
+  emit('toggle', props.tool.name, enabled)
 }
 </script>
 

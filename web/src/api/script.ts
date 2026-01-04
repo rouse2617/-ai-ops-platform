@@ -25,9 +25,38 @@ export interface ScriptListResponse {
   total: number
 }
 
-// 获取脚本列表
+// 获取脚本列表 - 使用工具系统的脚本工具 API
 export function getScripts(params?: { page?: number; pageSize?: number; keyword?: string }) {
-  return request.get<ScriptListResponse>('/scripts', { params })
+  return request.get<any>('/tools/script').then((res) => {
+    // 将工具格式转换为脚本格式
+    const tools = Array.isArray(res) ? res : (res?.tools ?? [])
+    const scripts: Script[] = tools.map((t: any) => ({
+      id: t.name || t.id || '',
+      name: t.name || '',
+      description: t.description || '',
+      language: 'bash' as const,
+      content: t.content || '',
+      parameters: t.parameters || [],
+      enabled: t.enabled ?? true,
+      createdAt: t.createdAt,
+      updatedAt: t.updatedAt
+    }))
+
+    // 应用关键词过滤
+    let filtered = scripts
+    if (params?.keyword) {
+      const kw = params.keyword.toLowerCase()
+      filtered = scripts.filter(s =>
+        s.name.toLowerCase().includes(kw) ||
+        s.description.toLowerCase().includes(kw)
+      )
+    }
+
+    return {
+      list: filtered,
+      total: filtered.length
+    }
+  })
 }
 
 // 获取单个脚本
