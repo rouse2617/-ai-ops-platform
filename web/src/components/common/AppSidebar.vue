@@ -82,7 +82,7 @@ const menuItems = [
 }
 
 .sidebar-header {
-  padding: var(--spacing-5);
+  padding: var(--spacing-3) var(--spacing-4);
   border-bottom: 1px solid var(--sidebar-border);
   display: flex;
   align-items: center;
@@ -117,14 +117,14 @@ const menuItems = [
 .sidebar-menu {
   flex: 1;
   border-right: none;
-  padding: var(--spacing-3) 0;
+  padding: var(--spacing-2) 0;
 }
 
 .sidebar-menu :deep(.el-menu-item) {
-  margin: var(--spacing-1) var(--spacing-3);
-  border-radius: var(--radius-lg);
-  height: 44px;
-  line-height: 44px;
+  margin: 2px var(--spacing-2);
+  border-radius: var(--radius-md);
+  height: 38px;
+  line-height: 38px;
   color: var(--sidebar-text);
   transition: all var(--transition-fast);
 }
@@ -164,7 +164,7 @@ const menuItems = [
 }
 
 .sidebar-footer {
-  padding: var(--spacing-4);
+  padding: var(--spacing-3);
   border-top: 1px solid var(--sidebar-border);
   display: flex;
   align-items: center;

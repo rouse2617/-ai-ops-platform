@@ -1,31 +1,23 @@
 <template>
-  <div 
-    class="chat-window-container"
-    :class="[
-      `layout-${layout}`,
-      { 'left-panel-hidden': !leftPanelVisible }
-    ]"
-  >
-    <!-- 左侧面板 - 历史记录 (仅桌面端显示) -->
-    <aside 
-      v-if="layout === 'three-column' && leftPanelVisible" 
-      class="history-panel"
-    >
-      <div class="panel-header">
-        <h3 class="panel-title">
-          <el-icon><ChatDotRound /></el-icon>
-          <span>对话历史</span>
-        </h3>
-        <el-button 
-          type="primary" 
-          size="small" 
-          @click="handleNewSession"
-          :icon="Plus"
-        >
-          新建
-        </el-button>
+  <div class="chat-window-container" :class="{ 'sidebar-collapsed': sidebarCollapsed }">
+    <!-- 可折叠侧边栏 -->
+    <aside class="session-sidebar">
+      <div class="sidebar-header">
+        <template v-if="!sidebarCollapsed">
+          <span class="sidebar-title">对话</span>
+          <el-button :icon="Plus" size="small" circle @click="handleNewSession" title="新建对话" />
+        </template>
+        <el-button
+          :icon="sidebarCollapsed ? Expand : Fold"
+          size="small"
+          circle
+          @click="toggleSidebar"
+          :title="sidebarCollapsed ? '展开' : '收起'"
+        />
       </div>
-      <div class="session-list">
+
+      <!-- 展开状态：显示会话列表 -->
+      <div v-if="!sidebarCollapsed" class="session-list">
         <div
           v-for="session in sessions"
           :key="session.id"
@@ -33,81 +25,42 @@
           :class="{ active: session.id === currentSessionId }"
           @click="handleSessionSelect(session.id)"
         >
-          <div class="session-info">
-            <el-icon class="session-icon"><ChatDotRound /></el-icon>
-            <span class="session-title">{{ session.title || '未命名对话' }}</span>
-          </div>
-          <el-icon
-            class="session-delete"
-            @click.stop="handleDeleteSession(session.id)"
-          >
-            <Delete />
-          </el-icon>
+          <el-icon class="session-icon"><ChatDotRound /></el-icon>
+          <span class="session-title">{{ session.title || '未命名对话' }}</span>
+          <el-icon class="session-delete" @click.stop="handleDeleteSession(session.id)"><Delete /></el-icon>
         </div>
         <div v-if="sessions.length === 0" class="empty-sessions">
-          <el-icon :size="32" color="#c0c4cc"><ChatDotRound /></el-icon>
-          <p>暂无对话记录</p>
+          <p>暂无对话</p>
+        </div>
+      </div>
+
+      <!-- 折叠状态：只显示图标 -->
+      <div v-else class="session-icons">
+        <el-button :icon="Plus" circle @click="handleNewSession" title="新建对话" />
+        <div
+          v-for="session in sessions.slice(0, 5)"
+          :key="session.id"
+          class="session-icon-item"
+          :class="{ active: session.id === currentSessionId }"
+          @click="handleSessionSelect(session.id)"
+          :title="session.title || '未命名对话'"
+        >
+          <el-icon><ChatDotRound /></el-icon>
         </div>
       </div>
     </aside>
 
-    <!-- 中间面板 - 聊天主区域 -->
+    <!-- 聊天主区域 -->
     <main class="chat-panel">
-      <!-- 聊天头部 -->
       <div class="chat-header">
-        <!-- 移动端/平板端菜单按钮 -->
-        <el-button
-          v-if="layout !== 'three-column'"
-          class="menu-button"
-          :icon="Menu"
-          @click="handleToggleHistoryOverlay"
-          circle
-        />
-
-        <div class="session-section">
-          <el-dropdown trigger="click" @command="handleSessionCommand">
-            <el-button type="primary" class="session-selector">
-              <el-icon><ChatDotRound /></el-icon>
-              <span class="session-title-text">{{ currentSessionTitle }}</span>
-              <el-icon class="dropdown-icon"><ArrowDown /></el-icon>
-            </el-button>
-            <template #dropdown>
-              <el-dropdown-menu>
-                <el-dropdown-item command="new">
-                  <el-icon><Plus /></el-icon>
-                  <span>新建对话</span>
-                </el-dropdown-item>
-                <el-dropdown-item divided v-for="session in sessions" :key="session.id" :command="session.id">
-                  <div class="dropdown-session-item">
-                    <div class="dropdown-session-info">
-                      <el-icon><ChatDotRound /></el-icon>
-                      <span class="dropdown-session-title">{{ session.title || '未命名对话' }}</span>
-                    </div>
-                    <el-icon
-                      class="dropdown-session-delete"
-                      @click.stop="handleDeleteSession(session.id)"
-                    >
-                      <Delete />
-                    </el-icon>
-                  </div>
-                </el-dropdown-item>
-              </el-dropdown-menu>
-            </template>
-          </el-dropdown>
-        </div>
-
-        <!-- 主机选择器 -->
+        <span class="current-title">{{ currentSessionTitle }}</span>
         <div class="host-section">
-          <div class="host-selector-wrapper">
-            <el-icon class="selector-icon"><Monitor /></el-icon>
-            <HostSelector v-model="selectedHostIds" />
-            <el-badge v-if="selectedHostIds.length > 0" :value="selectedHostIds.length" />
-          </div>
+          <el-icon class="host-icon"><Monitor /></el-icon>
+          <HostSelector v-model="selectedHostIds" />
+          <el-badge v-if="selectedHostIds.length > 0" :value="selectedHostIds.length" />
         </div>
-
       </div>
 
-      <!-- 消息列表 -->
       <div class="message-area">
         <MessageList
           :messages="messages"
@@ -120,8 +73,6 @@
           @regenerate="handleRegenerate"
           @tool-rerun="handleToolRerun"
         />
-
-        <!-- Prometheus 集成组件 -->
         <PrometheusIntegration
           ref="prometheusRef"
           :message-content="lastUserMessage"
@@ -130,7 +81,6 @@
         />
       </div>
 
-      <!-- 输入区域 -->
       <div class="input-area">
         <InputBox
           ref="inputBoxRef"
@@ -140,84 +90,15 @@
         />
       </div>
     </main>
-
-
-    <!-- 移动端历史面板遮罩 -->
-    <transition name="overlay-fade">
-      <div 
-        v-if="historyPanelOverlayVisible" 
-        class="history-overlay-backdrop"
-        @click="handleCloseHistoryOverlay"
-      />
-    </transition>
-    
-    <!-- 移动端历史面板侧滑 -->
-    <transition name="slide-left">
-      <aside 
-        v-if="historyPanelOverlayVisible" 
-        class="history-panel-overlay"
-      >
-        <div class="panel-header">
-          <h3 class="panel-title">
-            <el-icon><ChatDotRound /></el-icon>
-            <span>对话历史</span>
-          </h3>
-          <el-button 
-            :icon="Close" 
-            circle 
-            size="small"
-            @click="handleCloseHistoryOverlay"
-          />
-        </div>
-        <div class="panel-actions">
-          <el-button 
-            type="primary" 
-            @click="handleNewSessionFromOverlay"
-            :icon="Plus"
-            style="width: 100%"
-          >
-            新建对话
-          </el-button>
-        </div>
-        <div class="session-list">
-          <div
-            v-for="session in sessions"
-            :key="session.id"
-            class="session-item"
-            :class="{ active: session.id === currentSessionId }"
-            @click="handleSessionSelectFromOverlay(session.id)"
-          >
-            <div class="session-info">
-              <el-icon class="session-icon"><ChatDotRound /></el-icon>
-              <span class="session-title">{{ session.title || '未命名对话' }}</span>
-            </div>
-            <el-icon
-              class="session-delete"
-              @click.stop="handleDeleteSession(session.id)"
-            >
-              <Delete />
-            </el-icon>
-          </div>
-          <div v-if="sessions.length === 0" class="empty-sessions">
-            <el-icon :size="32" color="#c0c4cc"><ChatDotRound /></el-icon>
-            <p>暂无对话记录</p>
-          </div>
-        </div>
-      </aside>
-    </transition>
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed, ref, onMounted, watch } from 'vue'
 import { useChatStore } from '@/stores/chat'
-import { useUIStore } from '@/stores/ui'
 import { usePanelSync } from '@/composables/usePanelSync'
 import type { Message } from '@/api/chat'
-import {
-  ChatDotRound, ArrowDown, Plus, Delete,
-  Monitor, Menu, Close
-} from '@element-plus/icons-vue'
+import { ChatDotRound, Plus, Delete, Monitor, Expand, Fold } from '@element-plus/icons-vue'
 import { ElMessageBox, ElMessage } from 'element-plus'
 import MessageList from './MessageList.vue'
 import InputBox from './InputBox.vue'
@@ -225,11 +106,17 @@ import HostSelector from './HostSelector.vue'
 import PrometheusIntegration from './PrometheusIntegration.vue'
 
 const chatStore = useChatStore()
-const uiStore = useUIStore()
 const { syncToHost } = usePanelSync()
 const messageListRef = ref()
 const inputBoxRef = ref()
 const prometheusRef = ref()
+
+// 侧边栏折叠状态
+const sidebarCollapsed = ref(false)
+
+const toggleSidebar = () => {
+  sidebarCollapsed.value = !sidebarCollapsed.value
+}
 
 // Chat store state
 const messages = computed(() => chatStore.messages)
@@ -239,13 +126,6 @@ const thinkingSteps = computed(() => chatStore.thinkingSteps)
 const currentThinkingStatus = computed(() => chatStore.currentThinkingStatus)
 const sessionLoading = computed(() => chatStore.sessionLoading)
 const currentSessionId = computed(() => chatStore.currentSessionId)
-
-// UI store state
-const layout = computed(() => uiStore.layout)
-const leftPanelVisible = computed(() => uiStore.leftPanelVisible)
-const historyPanelOverlayVisible = computed(() => uiStore.historyPanelOverlayVisible)
-
-// Local state
 
 const selectedHostIds = computed({
   get: () => chatStore.selectedHostIds,
@@ -257,54 +137,31 @@ const currentSessionTitle = computed(() => {
   return session?.title || '新对话'
 })
 
-// 获取最后一条用户消息（用于 Prometheus 意图检测）
 const lastUserMessage = computed(() => {
   const userMessages = messages.value.filter(m => m.role === 'user')
   return userMessages.length > 0 ? userMessages[userMessages.length - 1].content : ''
 })
 
-// Prometheus 操作处理
 const handlePrometheusAction = async (action: { id: string; command?: string }) => {
   if (action.command) {
     await chatStore.sendMessage(`执行命令: ${action.command}`)
   }
 }
 
-// Initialize UI store and load sessions
 onMounted(async () => {
-  uiStore.init()
   await chatStore.loadSessions()
   if (!chatStore.currentSessionId) {
     await chatStore.newSession()
   }
 })
 
-// Watch messages for panel sync
 watch(() => messages.value, (newMessages) => {
   if (newMessages.length === 0) return
-
   const lastMessage = newMessages[newMessages.length - 1]
   if (lastMessage.role === 'assistant' && selectedHostIds.value.length > 0) {
-    // Sync to first selected host
     syncToHost(selectedHostIds.value[0])
   }
 }, { deep: true })
-
-// Watch selected hosts for panel sync
-watch(() => selectedHostIds.value, (newHosts) => {
-  if (newHosts.length > 0) {
-    syncToHost(newHosts[0])
-  }
-})
-
-// Session handlers
-const handleSessionCommand = async (command: string) => {
-  if (command === 'new') {
-    await chatStore.newSession()
-  } else {
-    await chatStore.switchSession(command)
-  }
-}
 
 const handleSessionSelect = async (sessionId: string) => {
   await chatStore.switchSession(sessionId)
@@ -322,12 +179,9 @@ const handleDeleteSession = async (sessionId: string) => {
       type: 'warning'
     })
     await chatStore.removeSession(sessionId)
-  } catch {
-    // 取消删除
-  }
+  } catch {}
 }
 
-// Message handlers
 const handleSend = async (message: string) => {
   try {
     await chatStore.sendMessage(message)
@@ -378,148 +232,99 @@ const handleClearMessages = async () => {
       type: 'warning'
     })
     chatStore.clearMessages()
-  } catch {
-    // 取消清空
-  }
-}
-
-// Panel toggle handlers
-const handleToggleHistoryOverlay = () => {
-  uiStore.toggleHistoryOverlay()
-}
-
-const handleCloseHistoryOverlay = () => {
-  uiStore.closeHistoryOverlay()
-}
-
-const handleNewSessionFromOverlay = async () => {
-  await chatStore.newSession()
-  uiStore.closeHistoryOverlay()
-}
-
-const handleSessionSelectFromOverlay = async (sessionId: string) => {
-  await chatStore.switchSession(sessionId)
-  uiStore.closeHistoryOverlay()
+  } catch {}
 }
 </script>
 
 <style scoped>
-/* ============================================
- * 三栏布局容器
- * ============================================ */
 .chat-window-container {
-  display: grid;
+  display: flex;
   height: 100%;
   width: 100%;
-  background: var(--color-gray-50);
-  overflow: hidden;
+  background: #fff;
 }
 
-/* 三栏布局 (>1200px) */
-.layout-three-column {
-  grid-template-columns: 280px 1fr;
-  grid-template-areas: "history chat";
-}
-
-.layout-three-column.left-panel-hidden {
-  grid-template-columns: 0 1fr;
-}
-
-/* 两栏布局 (768px - 1200px) */
-.layout-two-column {
-  grid-template-columns: 1fr;
-  grid-template-areas: "chat";
-}
-
-/* 单栏布局 (<768px) */
-.layout-single-column {
-  grid-template-columns: 1fr;
-  grid-template-areas: "chat";
-}
-
-/* ============================================
- * 左侧历史面板
- * ============================================ */
-.history-panel {
-  grid-area: history;
+/* 侧边栏 - 浅色系 */
+.session-sidebar {
+  width: 200px;
+  background: #f7f8fa;
+  border-right: 1px solid #e8e8e8;
   display: flex;
   flex-direction: column;
-  background: linear-gradient(180deg, var(--sidebar-bg-start) 0%, var(--sidebar-bg-end) 100%);
-  border-right: 1px solid var(--sidebar-border);
-  overflow: hidden;
-}
-
-.panel-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: var(--spacing-4);
-  border-bottom: 1px solid var(--sidebar-border);
+  transition: width 0.2s ease;
   flex-shrink: 0;
 }
 
-.panel-title {
+.sidebar-collapsed .session-sidebar {
+  width: 50px;
+}
+
+.sidebar-header {
   display: flex;
   align-items: center;
-  gap: var(--spacing-2);
-  font-size: var(--text-base);
-  font-weight: var(--font-semibold);
-  color: var(--sidebar-text-hover);
-  margin: 0;
+  justify-content: space-between;
+  padding: 12px;
+  border-bottom: 1px solid #e8e8e8;
+  gap: 8px;
+}
+
+.sidebar-collapsed .sidebar-header {
+  justify-content: center;
+  padding: 12px 8px;
+}
+
+.sidebar-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #303133;
 }
 
 .session-list {
   flex: 1;
   overflow-y: auto;
-  padding: var(--spacing-2);
+  padding: 8px;
 }
 
 .session-item {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  padding: var(--spacing-3) var(--spacing-3);
-  margin-bottom: var(--spacing-1);
-  border-radius: var(--radius-lg);
+  gap: 8px;
+  padding: 8px 10px;
+  margin-bottom: 4px;
+  border-radius: 6px;
   cursor: pointer;
-  transition: all var(--transition-fast);
-  color: var(--sidebar-text);
+  color: #606266;
+  transition: all 0.15s;
 }
 
 .session-item:hover {
-  background: rgba(255, 255, 255, 0.05);
-  color: var(--sidebar-text-hover);
+  background: #ebeef5;
+  color: #303133;
 }
 
 .session-item.active {
-  background: var(--sidebar-active-bg);
-  color: var(--sidebar-active-text);
-}
-
-.session-info {
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-2);
-  flex: 1;
-  min-width: 0;
+  background: #ecf5ff;
+  color: #409eff;
 }
 
 .session-icon {
   flex-shrink: 0;
+  font-size: 14px;
 }
 
 .session-title {
+  flex: 1;
+  font-size: 13px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: var(--text-sm);
 }
 
 .session-delete {
   opacity: 0;
-  color: var(--sidebar-text);
-  transition: all var(--transition-fast);
-  flex-shrink: 0;
+  font-size: 14px;
+  color: #909399;
+  transition: opacity 0.15s;
 }
 
 .session-item:hover .session-delete {
@@ -527,32 +332,52 @@ const handleSessionSelectFromOverlay = async (sessionId: string) => {
 }
 
 .session-delete:hover {
-  color: var(--color-danger);
+  color: #f56c6c;
 }
 
 .empty-sessions {
+  text-align: center;
+  color: #909399;
+  font-size: 12px;
+  padding: 20px;
+}
+
+/* 折叠状态图标列表 */
+.session-icons {
   display: flex;
   flex-direction: column;
   align-items: center;
+  padding: 8px 0;
+  gap: 8px;
+}
+
+.session-icon-item {
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
   justify-content: center;
-  padding: var(--spacing-8);
-  color: var(--sidebar-text);
-  text-align: center;
+  border-radius: 8px;
+  cursor: pointer;
+  color: #606266;
+  transition: all 0.15s;
 }
 
-.empty-sessions p {
-  margin-top: var(--spacing-2);
-  font-size: var(--text-sm);
+.session-icon-item:hover {
+  background: #ebeef5;
+  color: #303133;
 }
 
-/* ============================================
- * 中间聊天面板
- * ============================================ */
+.session-icon-item.active {
+  background: #ecf5ff;
+  color: #409eff;
+}
+
+/* 聊天面板 */
 .chat-panel {
-  grid-area: chat;
+  flex: 1;
   display: flex;
   flex-direction: column;
-  background: #fff;
   overflow: hidden;
   min-width: 0;
 }
@@ -560,100 +385,31 @@ const handleSessionSelectFromOverlay = async (sessionId: string) => {
 .chat-header {
   display: flex;
   align-items: center;
-  gap: var(--spacing-3);
-  padding: var(--spacing-3) var(--spacing-4);
-  background: #fff;
+  gap: 16px;
+  padding: 12px 20px;
   border-bottom: 1px solid #f0f0f0;
   flex-shrink: 0;
 }
 
-.menu-button {
-  flex-shrink: 0;
-}
-
-.session-section {
-  flex-shrink: 0;
-}
-
-.session-selector {
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-2);
-  padding: var(--spacing-2) var(--spacing-3);
-  border-radius: var(--radius-lg);
-}
-
-.session-title-text {
-  font-weight: var(--font-medium);
-  max-width: 150px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.dropdown-session-item {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  min-width: 200px;
-  max-width: 280px;
-  gap: var(--spacing-3);
-}
-
-.dropdown-session-info {
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-2);
-  flex: 1;
-  min-width: 0;
-}
-
-.dropdown-session-title {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.dropdown-session-delete {
-  color: var(--color-gray-400);
-  transition: color var(--transition-fast);
-}
-
-.dropdown-session-delete:hover {
-  color: var(--color-danger);
+.current-title {
+  font-size: 15px;
+  font-weight: 500;
+  color: #303133;
 }
 
 .host-section {
   flex: 1;
-  max-width: 360px;
-  min-width: 0;
-}
-
-.host-selector-wrapper {
-  position: relative;
   display: flex;
   align-items: center;
-  gap: var(--spacing-2);
-  padding: var(--spacing-2) var(--spacing-3);
-  background: #fff;
-  border: 1px solid var(--color-gray-300);
-  border-radius: var(--radius-lg);
-  transition: all var(--transition-fast);
+  gap: 8px;
+  max-width: 400px;
+  padding: 6px 12px;
+  border: 1px solid #dcdfe6;
+  border-radius: 8px;
 }
 
-.host-selector-wrapper:focus-within {
-  border-color: var(--color-primary);
-  box-shadow: 0 0 0 3px rgba(64, 158, 255, 0.1);
-}
-
-.selector-icon {
-  color: var(--color-gray-500);
-  flex-shrink: 0;
-}
-
-.panel-toggle-button {
-  flex-shrink: 0;
-  margin-left: auto;
+.host-icon {
+  color: #909399;
 }
 
 .message-area {
@@ -663,115 +419,15 @@ const handleSessionSelectFromOverlay = async (sessionId: string) => {
   flex-direction: column;
 }
 
-/* 消息区域内容居中，最大宽度800px */
 .message-area :deep(.message-list-container) {
-  max-width: 800px;
+  max-width: 900px;
   margin: 0 auto;
   width: 100%;
 }
 
-/* 超宽屏幕 (>1920px) 时最大宽度1000px */
-@media (min-width: 1920px) {
-  .message-area :deep(.message-list-container) {
-    max-width: 1000px;
-  }
-}
-
 .input-area {
-  border-top: none;
   background: #fff;
   flex-shrink: 0;
   box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.03);
-}
-
-/* ============================================
- * 移动端历史面板遮罩
- * ============================================ */
-.history-overlay-backdrop {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(0, 0, 0, 0.5);
-  z-index: var(--z-modal-backdrop);
-}
-
-.history-panel-overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  bottom: 0;
-  width: 280px;
-  max-width: 85vw;
-  display: flex;
-  flex-direction: column;
-  background: linear-gradient(180deg, var(--sidebar-bg-start) 0%, var(--sidebar-bg-end) 100%);
-  z-index: var(--z-modal);
-  box-shadow: var(--shadow-xl);
-}
-
-.history-panel-overlay .panel-header {
-  border-bottom: 1px solid var(--sidebar-border);
-}
-
-.history-panel-overlay .panel-actions {
-  padding: var(--spacing-3) var(--spacing-4);
-  border-bottom: 1px solid var(--sidebar-border);
-}
-
-/* ============================================
- * 动画
- * ============================================ */
-.overlay-fade-enter-active,
-.overlay-fade-leave-active {
-  transition: opacity var(--transition-base);
-}
-
-.overlay-fade-enter-from,
-.overlay-fade-leave-to {
-  opacity: 0;
-}
-
-.slide-left-enter-active,
-.slide-left-leave-active {
-  transition: transform var(--transition-base);
-}
-
-.slide-left-enter-from,
-.slide-left-leave-to {
-  transform: translateX(-100%);
-}
-
-/* ============================================
- * 响应式调整
- * ============================================ */
-@media (max-width: 1200px) {
-  .session-title-text {
-    max-width: 120px;
-  }
-  
-  .host-section {
-    max-width: 280px;
-  }
-}
-
-@media (max-width: 768px) {
-  .chat-header {
-    padding: var(--spacing-2) var(--spacing-3);
-  }
-  
-  .session-title-text {
-    max-width: 100px;
-  }
-  
-  .host-section {
-    flex: 1;
-    max-width: none;
-  }
-  
-  .host-selector-wrapper {
-    padding: var(--spacing-2);
-  }
 }
 </style>

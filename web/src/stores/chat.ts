@@ -315,7 +315,7 @@ export const useChatStore = defineStore('chat', () => {
           hostIds: selectedHostIds.value,
           history: historyMessages.length > 0 ? historyMessages : undefined
         },
-        (chunk: string, type: StreamEventType, rawData?: unknown) => {
+        (chunk: string, type: StreamEventType, rawData?: any) => {
           const lastMessage = messages.value[messages.value.length - 1]
           if (lastMessage.role !== 'assistant') return
 
@@ -390,7 +390,7 @@ export const useChatStore = defineStore('chat', () => {
 
             case 'tool_result':
               try {
-                const result = rawData || JSON.parse(chunk)
+                const result: any = rawData || JSON.parse(chunk)
                 // 更新 message 中的工具调用状态（优先使用ID匹配，如果没有ID则使用名称）
                 const toolCall = result.id
                   ? currentToolCalls.value.find(t => t.id === result.id)
@@ -445,7 +445,7 @@ export const useChatStore = defineStore('chat', () => {
         },
         abortController.signal
       )
-    } catch (error: unknown) {
+    } catch (error: any) {
       // 忽略取消错误
       if (error.name === 'AbortError') {
         // 显示取消通知
@@ -574,9 +574,9 @@ export const useChatStore = defineStore('chat', () => {
   function injectProactiveMessage(proactiveData: ProactiveMessageData) {
     const message: Message = {
       role: 'proactive',
-      content: proactiveData.content || '',
-      timestamp: proactiveData.created_at || Date.now(),
-      proactiveType: proactiveData.type,
+      content: (proactiveData as any).content || '',
+      timestamp: (proactiveData as any).created_at || Date.now(),
+      proactiveType: (proactiveData as any).type,
       proactiveData: proactiveData
     }
     messages.value.push(message)

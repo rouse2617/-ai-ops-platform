@@ -14,6 +14,7 @@ import (
 	"ai-ops/internal/mcp"
 	"ai-ops/internal/model"
 	"ai-ops/internal/repository"
+	"ai-ops/internal/script"
 	"ai-ops/internal/security"
 	"ai-ops/internal/ssh"
 	"ai-ops/internal/tool"
@@ -69,6 +70,15 @@ func main() {
 	analysisRepo := repository.NewAnalysisRepository(db)
 	healthRepo := repository.NewHealthCheckRepository(db)
 	trendRepo := repository.NewTrendPredictionRepository(db)
+	scriptRepo := repository.NewScriptRepository(db)
+	taskRepo := repository.NewTaskRepository(db)
+
+	// 初始化内置脚本
+	if err := script.InitBuiltinScripts(scriptRepo); err != nil {
+		logger.Warn("初始化内置脚本失败", zap.Error(err))
+	} else {
+		logger.Info("内置脚本初始化完成")
+	}
 
 	// 3. 初始化 SSH 连接池
 	sshPool := ssh.NewPool(ssh.Config{
@@ -259,6 +269,8 @@ func main() {
 		AnalysisRepo: analysisRepo,
 		HealthRepo:   healthRepo,
 		TrendRepo:    trendRepo,
+		ScriptRepo:   scriptRepo,
+		TaskRepo:     taskRepo,
 		LLMClient:    llmClient,
 		Cache:        cacheInstance,
 		Version:      Version,

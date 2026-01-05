@@ -92,6 +92,7 @@ func InitDB(dsn string) (*gorm.DB, error) {
 		&model.Analysis{},
 		&model.HealthCheck{},
 		&model.TrendPrediction{},
+		&model.Task{},
 	)
 	if err != nil {
 		return nil, err
@@ -166,6 +167,24 @@ func createPerformanceIndexes(db *gorm.DB) error {
 		ON messages(session_id, host_id)
 	`).Error; err != nil {
 		return fmt.Errorf("创建消息会话主机索引失败: %w", err)
+	}
+
+	// 为 Task 表创建状态+时间复合索引
+	// 优化按状态筛选并按时间排序的查询
+	if err := db.Exec(`
+		CREATE INDEX IF NOT EXISTS idx_tasks_status_time
+		ON tasks(status, start_time DESC)
+	`).Error; err != nil {
+		return fmt.Errorf("创建任务状态时间索引失败: %w", err)
+	}
+
+	// 为 Task 表创建主机+时间复合索引
+	// 优化按主机筛选任务的查询
+	if err := db.Exec(`
+		CREATE INDEX IF NOT EXISTS idx_tasks_host_time
+		ON tasks(host_id, start_time DESC)
+	`).Error; err != nil {
+		return fmt.Errorf("创建任务主机时间索引失败: %w", err)
 	}
 
 	return nil

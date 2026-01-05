@@ -30,6 +30,21 @@ func RegisterAllEnhanced(registry *tool.Registry, getHostsFunc func(group string
 		NewNetworkCheckTool(),
 		NewPortCheckTool(),
 		NewInodeCheckTool(),
+		// 配置管理工具
+		NewGetConfigTool(),
+		NewUpdateConfigTool(),
+		NewCheckSSLCertTool(),
+		// 数据库工具
+		NewCheckMySQLStatusTool(),
+		NewCheckRedisStatusTool(),
+		NewBackupDatabaseTool(),
+		// 服务管理工具
+		NewManageServiceTool(),
+		NewCheckServiceHealthTool(),
+		NewReloadNginxTool(),
+		// 容器工具
+		NewListContainersTool(),
+		NewCheckContainerLogsTool(),
 	}
 
 	for _, t := range tools {
@@ -90,6 +105,21 @@ func RegisterBasicEnhanced(registry *tool.Registry) error {
 		// 存储专家工具
 		NewStorageCheckTool(),
 		NewRAIDCheckTool(),
+		// 服务管理工具
+		NewManageServiceTool(),
+		NewCheckServiceHealthTool(),
+		NewReloadNginxTool(),
+		// 配置管理工具
+		NewGetConfigTool(),
+		NewUpdateConfigTool(),
+		NewCheckSSLCertTool(),
+		// 数据库工具
+		NewCheckMySQLStatusTool(),
+		NewCheckRedisStatusTool(),
+		NewBackupDatabaseTool(),
+		// 容器工具
+		NewListContainersTool(),
+		NewCheckContainerLogsTool(),
 	}
 
 	for _, t := range tools {

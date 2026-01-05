@@ -135,6 +135,24 @@ watch(() => route.path, () => {
 .collapse-btn {
   margin-right: var(--spacing-3);
 }
+
+/* 全局下拉菜单优化 */
+.el-dropdown-menu {
+  border-radius: 8px !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1) !important;
+  border: 1px solid #ebeef5 !important;
+  padding: 4px 0 !important;
+}
+
+.el-dropdown-menu__item {
+  padding: 8px 16px !important;
+  font-size: 13px !important;
+  line-height: 1.4 !important;
+}
+
+.el-dropdown-menu__item:hover {
+  background-color: #f5f7fa !important;
+}
 </style>
 
 <style scoped>

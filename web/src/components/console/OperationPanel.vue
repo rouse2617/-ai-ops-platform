@@ -36,12 +36,12 @@
       </el-tab-pane>
 
       <el-tab-pane label="执行命令" name="run_command">
-        <el-form :model="commandForm" label-width="100px">
+        <el-form :model="commandForm" label-width="80px" class="compact-form">
           <el-form-item label="命令">
             <el-input
               v-model="commandForm.command"
               type="textarea"
-              :rows="4"
+              :rows="3"
               placeholder="请输入要执行的命令"
               :class="{ 'dangerous-command': isDangerous, 'critical-command': isCritical }"
             />
@@ -49,34 +49,42 @@
               <el-icon><Warning /></el-icon>
               <span>{{ dangerWarning }}</span>
             </div>
-            <div v-if="highlightedCommand && commandForm.command" class="command-preview">
-              <span class="preview-label">命令预览:</span>
-              <div class="preview-content" v-html="highlightedCommand"></div>
+          </el-form-item>
+
+          <!-- 快捷命令 -->
+          <el-form-item label="快捷命令">
+            <div class="quick-commands">
+              <el-tag
+                v-for="cmd in quickCommands"
+                :key="cmd.label"
+                class="quick-cmd-tag"
+                @click="fillCommand(cmd.command)"
+                effect="plain"
+              >
+                {{ cmd.label }}
+              </el-tag>
             </div>
           </el-form-item>
-          <el-form-item label="超时时间">
-            <div class="timeout-control">
+
+          <el-form-item label="超时">
+            <div class="timeout-inline">
               <el-slider
                 v-model="commandForm.timeout"
                 :min="5"
                 :max="300"
                 :step="5"
-                :marks="timeoutMarks"
-                show-stops
+                style="flex: 1"
               />
-              <span class="timeout-value">{{ commandForm.timeout }} 秒</span>
+              <span class="timeout-value">{{ commandForm.timeout }}s</span>
+              <el-button
+                type="primary"
+                @click="handleExecuteCommand"
+                :loading="executing"
+                :class="{ 'danger-btn': isCritical }"
+              >
+                {{ isCritical ? '执行危险命令' : '执行' }}
+              </el-button>
             </div>
-          </el-form-item>
-          <el-form-item>
-            <el-button
-              type="primary"
-              @click="handleExecuteCommand"
-              :loading="executing"
-              :danger="isCritical"
-            >
-              <el-icon v-if="isCritical"><Warning /></el-icon>
-              {{ isCritical ? '执行危险命令' : '执行命令' }}
-            </el-button>
           </el-form-item>
         </el-form>
       </el-tab-pane>
@@ -129,6 +137,20 @@ const executing = ref(false)
 const confirmDialogVisible = ref(false)
 const confirmRequest = ref<ConfirmationRequest | null>(null)
 const pendingCommand = ref<{ command: string; timeout: number } | null>(null)
+
+// 快捷命令
+const quickCommands = [
+  { label: 'Top', command: 'top -bn1 | head -20' },
+  { label: '磁盘', command: 'df -h' },
+  { label: '内存', command: 'free -h' },
+  { label: '进程', command: 'ps aux --sort=-%cpu | head -10' },
+  { label: '网络', command: 'netstat -tlnp' },
+  { label: '日志', command: 'tail -100 /var/log/syslog' }
+]
+
+const fillCommand = (cmd: string) => {
+  commandForm.value.command = cmd
+}
 
 const logForm = ref({
   log_type: 'nginx',
@@ -291,7 +313,56 @@ const handleCheckDisk = () => {
 
 <style scoped>
 .operation-panel {
-  padding: 20px;
+  padding: 12px 16px;
+}
+
+.compact-form :deep(.el-form-item) {
+  margin-bottom: 12px;
+}
+
+.compact-form :deep(.el-form-item__label) {
+  font-size: 13px;
+}
+
+/* 快捷命令 */
+.quick-commands {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.quick-cmd-tag {
+  cursor: pointer;
+  transition: all 0.2s;
+  background: #ecf5ff;
+  border-color: #d9ecff;
+  color: #409eff;
+}
+
+.quick-cmd-tag:hover {
+  background: #409eff;
+  color: #fff;
+  transform: translateY(-1px);
+}
+
+/* 超时和执行按钮内联 */
+.timeout-inline {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+}
+
+.timeout-inline .timeout-value {
+  min-width: 40px;
+  font-size: 13px;
+  font-weight: 500;
+  color: #409eff;
+}
+
+.danger-btn {
+  background: #f56c6c !important;
+  border-color: #f56c6c !important;
 }
 
 .system-actions {

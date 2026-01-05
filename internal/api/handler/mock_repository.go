@@ -281,3 +281,77 @@ func (m *mockConfigRepository) GetAll() (map[string]string, error) {
 	return result, nil
 }
 
+// mockScriptRepository mock脚本仓库
+type mockScriptRepository struct {
+	scripts map[string]*model.Script
+}
+
+func newMockScriptRepository() repository.ScriptRepository {
+	return &mockScriptRepository{
+		scripts: make(map[string]*model.Script),
+	}
+}
+
+func (m *mockScriptRepository) Create(script *model.Script) error {
+	m.scripts[script.ID] = script
+	return nil
+}
+
+func (m *mockScriptRepository) Update(script *model.Script) error {
+	m.scripts[script.ID] = script
+	return nil
+}
+
+func (m *mockScriptRepository) Delete(id string) error {
+	delete(m.scripts, id)
+	return nil
+}
+
+func (m *mockScriptRepository) GetByID(id string) (*model.Script, error) {
+	script, ok := m.scripts[id]
+	if !ok {
+		return nil, gorm.ErrRecordNotFound
+	}
+	return script, nil
+}
+
+func (m *mockScriptRepository) GetByName(name string) (*model.Script, error) {
+	for _, script := range m.scripts {
+		if script.Name == name {
+			return script, nil
+		}
+	}
+	return nil, gorm.ErrRecordNotFound
+}
+
+func (m *mockScriptRepository) List(filter repository.ScriptFilter) ([]*model.Script, error) {
+	scripts := make([]*model.Script, 0, len(m.scripts))
+	for _, script := range m.scripts {
+		// 应用过滤条件
+		if filter.Language != "" && script.Language != filter.Language {
+			continue
+		}
+		if filter.Enabled != nil && script.Enabled != *filter.Enabled {
+			continue
+		}
+		if filter.Keyword != "" {
+			keyword := strings.ToLower(filter.Keyword)
+			if !strings.Contains(strings.ToLower(script.Name), keyword) &&
+				!strings.Contains(strings.ToLower(script.Description), keyword) {
+				continue
+			}
+		}
+		scripts = append(scripts, script)
+	}
+	return scripts, nil
+}
+
+func (m *mockScriptRepository) UpdateEnabled(id string, enabled bool) error {
+	script, ok := m.scripts[id]
+	if !ok {
+		return gorm.ErrRecordNotFound
+	}
+	script.Enabled = enabled
+	return nil
+}
+

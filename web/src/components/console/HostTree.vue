@@ -363,11 +363,11 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   background: #fff;
-  padding: 16px;
+  padding: 12px;
 }
 
 .host-tree-header {
-  margin-bottom: 12px;
+  margin-bottom: 8px;
 }
 
 .header-controls {
@@ -378,9 +378,9 @@ onUnmounted(() => {
 .host-tree-toolbar {
   display: flex;
   align-items: center;
-  gap: 8px;
-  margin-bottom: 12px;
-  padding-bottom: 12px;
+  gap: 6px;
+  margin-bottom: 8px;
+  padding-bottom: 8px;
   border-bottom: 1px solid #e4e7ed;
 }
 
@@ -402,11 +402,28 @@ onUnmounted(() => {
   flex: 1;
 }
 
+/* 紧凑的行高 */
 :deep(.el-tree-node__content) {
-  height: 32px;
+  height: 28px;
+  border-radius: 4px;
+  margin: 1px 0;
+  transition: all 0.15s;
+}
+
+/* 选中态背景色 */
+:deep(.el-tree-node.is-checked > .el-tree-node__content) {
+  background-color: #ecf5ff;
+}
+
+:deep(.el-tree-node__content:hover) {
+  background-color: #f5f7fa;
 }
 
 :deep(.el-checkbox) {
-  margin-right: 8px;
+  margin-right: 6px;
+}
+
+:deep(.el-tree-node__expand-icon) {
+  font-size: 12px;
 }
 </style>

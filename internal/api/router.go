@@ -29,6 +29,8 @@ type RouterConfig struct {
 	GroupRepo        repository.GroupRepository
 	ConfigRepo       repository.ConfigRepository
 	AnalysisRepo     repository.AnalysisRepository
+	ScriptRepo       repository.ScriptRepository
+	TaskRepo         repository.TaskRepository
 	HealthRepo       *repository.HealthCheckRepository
 	TrendRepo        *repository.TrendPredictionRepository
 	LLMClient        *llm.OpenAIClient
@@ -105,8 +107,13 @@ func NewRouter(cfg RouterConfig) *gin.Engine {
 	analysisHandler := handler.NewAnalysisHandler(cfg.LLMClient, cfg.AnalysisRepo)
 	internalSSHHandler := handler.NewInternalSSHHandler(cfg.SSHPool, cfg.HostRepo)
 	slotFillingHandler := handler.NewSlotFillingHandler()
-	operationsHandler := handler.NewOperationsHandler(cfg.ToolRegistry, cfg.SSHPool)
+	operationsHandler := handler.NewOperationsHandler(cfg.ToolRegistry, cfg.SSHPool, cfg.TaskRepo)
 	toolHandler := handler.NewToolHandler(cfg.ToolRegistry, cfg.SSHPool, cfg.ConfigRepo)
+
+	var taskHandler *handler.TaskHandler
+	if cfg.TaskRepo != nil {
+		taskHandler = handler.NewTaskHandler(cfg.TaskRepo)
+	}
 
 	var healthHandler *handler.HealthHandler
 	var trendHandler *handler.TrendHandler
@@ -220,6 +227,39 @@ func NewRouter(cfg RouterConfig) *gin.Engine {
 				tools.GET("/:name", toolHandler.GetTool)
 				tools.PUT("/:name/toggle", toolHandler.ToggleTool)
 				tools.POST("/:name/execute", toolHandler.ExecuteTool)
+			}
+
+			// 脚本管理 API
+			if cfg.ScriptRepo != nil {
+				scriptHandler := handler.NewScriptHandler(cfg.ScriptRepo, cfg.HostRepo, cfg.ToolRegistry, cfg.SSHPool)
+				scripts := protected.Group("/scripts")
+				{
+					scripts.GET("", scriptHandler.ListScripts)
+					scripts.POST("", scriptHandler.CreateScript)
+					scripts.GET("/:id", scriptHandler.GetScript)
+					scripts.PUT("/:id", scriptHandler.UpdateScript)
+					scripts.DELETE("/:id", scriptHandler.DeleteScript)
+					scripts.PUT("/:id/toggle", scriptHandler.ToggleScript)
+					scripts.POST("/upload", scriptHandler.UploadScript)
+					scripts.POST("/:id/test", scriptHandler.TestScript)
+				}
+
+				// 启动时注册已有脚本到工具系统
+				scriptHandler.RegisterAllScripts()
+			}
+
+			// 任务历史 API
+			if taskHandler != nil {
+				tasks := protected.Group("/tasks")
+				{
+					tasks.GET("", taskHandler.ListTasks)
+					tasks.GET("/stats", taskHandler.GetTaskStats)
+					tasks.POST("/batch-delete", taskHandler.BatchDeleteTasks)
+					tasks.GET("/:id", taskHandler.GetTask)
+					tasks.POST("/:id/cancel", taskHandler.CancelTask)
+					tasks.POST("/:id/retry", taskHandler.RetryTask)
+					tasks.DELETE("/:id", taskHandler.DeleteTask)
+				}
 			}
 
 			// 监控告警 API（如果已配置）

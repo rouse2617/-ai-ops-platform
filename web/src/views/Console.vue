@@ -73,9 +73,9 @@
       <template #right>
         <div v-if="!isMobile || rightPanelVisible" class="right-panel-container">
           <ResizableVerticalPanels
-            :initial-top-height="260"
-            :min-top-height="200"
-            :max-top-height="400"
+            :initial-top-height="200"
+            :min-top-height="150"
+            :max-top-height="350"
             height="100%"
           >
             <template #top>
@@ -482,47 +482,48 @@ watch(hasResults, (has, had) => {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: var(--spacing-10);
+  padding: var(--spacing-6);
   text-align: center;
 }
 
 .empty-illustration {
-  margin-bottom: var(--spacing-6);
-  opacity: 0.5;
+  margin-bottom: var(--spacing-4);
+  opacity: 0.4;
 }
 
 .empty-title {
-  font-size: var(--text-xl);
+  font-size: var(--text-base);
   font-weight: var(--font-semibold);
-  color: var(--color-gray-700);
-  margin: 0 0 var(--spacing-3) 0;
+  color: var(--color-gray-600);
+  margin: 0 0 var(--spacing-2) 0;
 }
 
 .empty-description {
-  font-size: var(--text-base);
-  color: var(--color-gray-500);
-  margin: 0 0 var(--spacing-8) 0;
-  max-width: 400px;
+  font-size: var(--text-sm);
+  color: var(--color-gray-400);
+  margin: 0 0 var(--spacing-4) 0;
+  max-width: 300px;
 }
 
 .empty-tips {
   display: flex;
   flex-direction: column;
-  gap: var(--spacing-3);
+  gap: var(--spacing-2);
   align-items: flex-start;
 }
 
 .tip-item {
   display: flex;
   align-items: center;
-  gap: var(--spacing-3);
-  font-size: var(--text-sm);
-  color: var(--color-gray-600);
+  gap: var(--spacing-2);
+  font-size: var(--text-xs);
+  color: var(--color-gray-500);
 }
 
 .tip-item .el-icon {
   color: #22c55e;
   flex-shrink: 0;
+  font-size: 12px;
 }
 
 /* ===== 响应式设计 - Responsive Design ===== */

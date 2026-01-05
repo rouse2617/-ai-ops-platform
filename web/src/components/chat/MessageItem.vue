@@ -179,7 +179,7 @@ const renderedContent = computed(() => {
 .message-item {
   display: flex;
   justify-content: center;
-  padding: var(--spacing-4, 16px) var(--spacing-5, 20px);
+  padding: 10px 16px;
   transition: background-color var(--transition-base, 0.2s);
 }
 
@@ -188,11 +188,12 @@ const renderedContent = computed(() => {
 }
 
 .message-user {
-  background-color: var(--color-message-user-bg, #fff);
+  background-color: #fff;
 }
 
 .message-assistant {
-  background-color: var(--color-message-assistant-bg, #f8fafc);
+  background-color: #f9fafb;
+  border-left: 3px solid #409eff;
 }
 
 /* Message card wrapper - applies max-width and centering - Req 6.1, 6.2 */
@@ -275,7 +276,7 @@ const renderedContent = computed(() => {
 }
 
 .markdown-body :deep(p) {
-  margin: 0 0 var(--spacing-3, 10px);
+  margin: 0 0 6px;
 }
 
 .markdown-body :deep(p:last-child) {
@@ -336,12 +337,13 @@ const renderedContent = computed(() => {
 
 .markdown-body :deep(ul),
 .markdown-body :deep(ol) {
-  padding-left: var(--spacing-5, 20px);
-  margin: var(--spacing-3, 10px) 0;
+  padding-left: var(--spacing-4, 16px);
+  margin: 6px 0;
 }
 
 .markdown-body :deep(li) {
-  margin: var(--spacing-1, 5px) 0;
+  margin: 2px 0;
+  line-height: 1.5;
 }
 
 .markdown-body :deep(blockquote) {

@@ -23,8 +23,8 @@
           v-model="inputText"
           type="textarea"
           :rows="1"
-          :autosize="{ minRows: 1, maxRows: 6 }"
-          placeholder="输入您的问题，按 Enter 发送，Shift + Enter 换行，使用 / 选择命令，使用 @ 选择主机"
+          :autosize="{ minRows: 1, maxRows: 4 }"
+          placeholder="输入问题... (/ 命令, @ 主机)"
           resize="none"
           @keydown="handleKeydown"
           @input="handleInput"
@@ -146,24 +146,7 @@
       </div>
     </div>
     <div class="input-hints">
-      <div class="hint-tags">
-        <el-tag size="small" type="info" effect="plain">
-          Enter 发送
-        </el-tag>
-        <el-tag size="small" type="info" effect="plain">
-          Shift+Enter 换行
-        </el-tag>
-        <el-tag size="small" type="info" effect="plain">
-          / 命令
-        </el-tag>
-        <el-tag size="small" type="info" effect="plain">
-          @ 主机
-        </el-tag>
-        <el-tag size="small" type="info" effect="plain">
-          ↑↓ 历史
-        </el-tag>
-      </div>
-      <span class="hint-text">您可以询问服务器状态、执行命令、查看日志等运维相关问题</span>
+      <span class="hint-text">Enter 发送 · Shift+Enter 换行 · ↑↓ 历史</span>
     </div>
   </div>
 </template>
@@ -561,7 +544,7 @@ const handleClickOutside = (e: MouseEvent) => {
 
 <style scoped>
 .input-box {
-  padding: 16px 20px;
+  padding: 12px 16px;
   background: #fff;
   position: relative;
 }
@@ -598,11 +581,11 @@ const handleClickOutside = (e: MouseEvent) => {
 }
 
 .input-container :deep(.el-textarea__inner) {
-  padding: 12px 15px;
+  padding: 10px 12px;
   font-size: 14px;
-  line-height: 1.5;
+  line-height: 1.4;
   border-radius: 8px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.04);
   transition: all 0.3s ease;
 }
 
@@ -710,24 +693,14 @@ const handleClickOutside = (e: MouseEvent) => {
 
 .input-hints {
   display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-top: 10px;
-}
-
-.hint-tags {
-  display: flex;
-  gap: 6px;
-  flex-shrink: 0;
-  flex-wrap: wrap;
+  justify-content: center;
+  margin-top: 6px;
 }
 
 .hint-text {
-  font-size: 12px;
-  color: #909399;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  font-size: 11px;
+  color: #c0c4cc;
+  letter-spacing: 0.3px;
 }
 
 /* Scrollbar styling for dropdown menus */

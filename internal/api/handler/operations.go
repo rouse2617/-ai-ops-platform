@@ -1,26 +1,35 @@
 package handler
 
 import (
+	"encoding/json"
 	"time"
 
+	"ai-ops/internal/model"
+	"ai-ops/internal/repository"
 	"ai-ops/internal/ssh"
 	"ai-ops/internal/tool"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 )
 
 // OperationsHandler 批量操作处理器
 type OperationsHandler struct {
 	registry *tool.Registry
 	sshPool  *ssh.Pool
+	taskRepo repository.TaskRepository
 }
 
 // NewOperationsHandler 创建批量操作处理器
-func NewOperationsHandler(registry *tool.Registry, sshPool *ssh.Pool) *OperationsHandler {
-	return &OperationsHandler{
+func NewOperationsHandler(registry *tool.Registry, sshPool *ssh.Pool, taskRepo ...repository.TaskRepository) *OperationsHandler {
+	h := &OperationsHandler{
 		registry: registry,
 		sshPool:  sshPool,
 	}
+	if len(taskRepo) > 0 {
+		h.taskRepo = taskRepo[0]
+	}
+	return h
 }
 
 // BatchExecuteRequest 批量执行请求
@@ -84,6 +93,9 @@ func (h *OperationsHandler) BatchExecute(c *gin.Context) {
 	}
 	params["hosts"] = req.Hosts
 
+	// 序列化输入参数
+	inputJSON, _ := json.Marshal(params)
+
 	// 创建执行上下文
 	ctx := &tool.Context{
 		Hosts: req.Hosts,
@@ -94,6 +106,41 @@ func (h *OperationsHandler) BatchExecute(c *gin.Context) {
 	start := time.Now()
 	result, err := toolInstance.Execute(ctx, params)
 	elapsed := time.Since(start)
+
+	// 记录任务到数据库
+	if h.taskRepo != nil {
+		for _, host := range req.Hosts {
+			task := &model.Task{
+				ID:        uuid.New().String(),
+				Type:      req.Operation,
+				ToolName:  req.Operation,
+				HostID:    host,
+				HostName:  host,
+				Input:     string(inputJSON),
+				StartTime: start,
+				CreatedAt: time.Now(),
+				UpdatedAt: time.Now(),
+			}
+			endTime := time.Now()
+			task.EndTime = &endTime
+			task.Duration = elapsed.Milliseconds()
+
+			if err != nil || !result.Success {
+				task.Status = "failed"
+				if err != nil {
+					task.Error = err.Error()
+				} else {
+					task.Error = result.Error
+				}
+			} else {
+				task.Status = "success"
+				if outputJSON, e := json.Marshal(result.Data); e == nil {
+					task.Output = string(outputJSON)
+				}
+			}
+			h.taskRepo.Create(task)
+		}
+	}
 
 	if err != nil {
 		ExecError(c, "执行失败: "+err.Error())

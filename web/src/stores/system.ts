@@ -113,7 +113,7 @@ export const useSystemStore = defineStore('system', () => {
   }
 
   // 计算会话健康评分
-  function calculateSessionScore(sessionId: string, metrics: {
+  function calculateSessionScore(_sessionId: string, metrics: {
     avgResponseTime: number
     errorCount: number
     totalMessages: number

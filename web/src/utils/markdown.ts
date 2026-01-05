@@ -11,18 +11,24 @@ import 'highlight.js/styles/github-dark.css'
 // Configure marked once
 marked.setOptions({
   breaks: true,
-  gfm: true,
-  highlight: function(code: string, lang: string) {
-    if (lang && hljs.getLanguage(lang)) {
-      try {
-        return hljs.highlight(code, { language: lang }).value
-      } catch {
-        // Fall through to auto-highlight
-      }
-    }
-    return hljs.highlightAuto(code).value
-  }
+  gfm: true
 })
+
+// Custom renderer for code highlighting
+const renderer = new marked.Renderer()
+renderer.code = function(code: string, language: string | undefined) {
+  if (language && hljs.getLanguage(language)) {
+    try {
+      const highlighted = hljs.highlight(code, { language }).value
+      return `<pre><code class="hljs language-${language}">${highlighted}</code></pre>`
+    } catch {
+      // Fall through
+    }
+  }
+  const highlighted = hljs.highlightAuto(code).value
+  return `<pre><code class="hljs">${highlighted}</code></pre>`
+}
+marked.use({ renderer })
 
 // Simple LRU cache for rendered markdown
 const markdownCache = new Map<string, string>()
@@ -53,8 +59,8 @@ export function renderMarkdown(content: string): string {
 
   // Manage cache size
   if (markdownCache.size >= MAX_CACHE_SIZE) {
-    const firstKey = markdownCache.keys().next().value
-    markdownCache.delete(firstKey)
+    const firstKey = markdownCache.keys().next().value as string
+    if (firstKey) markdownCache.delete(firstKey)
   }
 
   markdownCache.set(cacheKey, html)
