@@ -20,13 +20,19 @@ import (
 
 // ChatService 聊天服务
 type ChatService struct {
-	agent       *agent.Agent
-	router      *agent.AgentRouter // 智能路由器
-	sessionRepo repository.SessionRepository
+	agent         *agent.Agent
+	router        *agent.AgentRouter       // 智能路由器
+	skillExecutor *agent.SkillExecutor     // Skill 执行器
+	sessionRepo   repository.SessionRepository
 }
 
 // NewChatService 创建聊天服务
 func NewChatService(llmClient llm.Client, toolRegistry *tool.Registry, sshPool *ssh.Pool, sessionRepo repository.SessionRepository) *ChatService {
+	return NewChatServiceWithConfig(llmClient, toolRegistry, sshPool, sessionRepo, "")
+}
+
+// NewChatServiceWithConfig 创建聊天服务（支持配置文件）
+func NewChatServiceWithConfig(llmClient llm.Client, toolRegistry *tool.Registry, sshPool *ssh.Pool, sessionRepo repository.SessionRepository, expertsConfigPath string) *ChatService {
 	// 创建 Agent
 	agentInstance := agent.NewAgent(llmClient, toolRegistry, sshPool, agent.Config{
 		MaxLoops:      10,
@@ -39,16 +45,56 @@ func NewChatService(llmClient llm.Client, toolRegistry *tool.Registry, sshPool *
 	// 创建智能路由器
 	router := agent.NewAgentRouter(llmClient, toolRegistry, sshPool, agentInstance)
 
-	// 注册专家 Agent
-	router.RegisterExpert(agent.NewTroubleshootAgent(llmClient, toolRegistry, sshPool))
-	router.RegisterExpert(agent.NewMonitorAgent(llmClient, toolRegistry, sshPool))
-	router.RegisterExpert(agent.NewDatabaseAgent(llmClient, toolRegistry, sshPool))
+	// 创建 Skill 执行器
+	skillExecutor := agent.NewSkillExecutor(llmClient, toolRegistry, sshPool, agentInstance)
+
+	// 尝试从配置文件加载专家和技能
+	if expertsConfigPath != "" {
+		cfg, err := agent.LoadExpertsConfig(expertsConfigPath)
+		if err == nil {
+			// 注册动态专家
+			for _, expertCfg := range cfg.Experts {
+				dynamicExpert := agent.NewDynamicExpert(expertCfg, llmClient, toolRegistry, sshPool)
+				router.RegisterExpert(dynamicExpert)
+				skillExecutor.RegisterExpert(dynamicExpert)
+			}
+			// 注册技能
+			for _, skillCfg := range cfg.Skills {
+				skillExecutor.RegisterSkill(skillCfg)
+			}
+			zap.L().Info("已加载专家和技能配置",
+				zap.Int("experts", len(cfg.Experts)),
+				zap.Int("skills", len(cfg.Skills)))
+		} else {
+			zap.L().Warn("加载专家配置失败，使用默认配置", zap.Error(err))
+			registerDefaultExperts(router, skillExecutor, llmClient, toolRegistry, sshPool)
+		}
+	} else {
+		// 使用默认专家
+		registerDefaultExperts(router, skillExecutor, llmClient, toolRegistry, sshPool)
+	}
 
 	return &ChatService{
-		agent:       agentInstance,
-		router:      router,
-		sessionRepo: sessionRepo,
+		agent:         agentInstance,
+		router:        router,
+		skillExecutor: skillExecutor,
+		sessionRepo:   sessionRepo,
 	}
+}
+
+// registerDefaultExperts 注册默认专家
+func registerDefaultExperts(router *agent.AgentRouter, skillExecutor *agent.SkillExecutor, llmClient llm.Client, toolRegistry *tool.Registry, sshPool *ssh.Pool) {
+	troubleshoot := agent.NewTroubleshootAgent(llmClient, toolRegistry, sshPool)
+	monitor := agent.NewMonitorAgent(llmClient, toolRegistry, sshPool)
+	database := agent.NewDatabaseAgent(llmClient, toolRegistry, sshPool)
+
+	router.RegisterExpert(troubleshoot)
+	router.RegisterExpert(monitor)
+	router.RegisterExpert(database)
+
+	skillExecutor.RegisterExpert(troubleshoot)
+	skillExecutor.RegisterExpert(monitor)
+	skillExecutor.RegisterExpert(database)
 }
 
 // ChatRequest 聊天请求
@@ -473,4 +519,77 @@ func (s *ChatService) getCurrentHostID(hosts []string) string {
 		return ""
 	}
 	return hosts[0]
+}
+
+// GetSkills 获取所有可用的 Skill 列表
+func (s *ChatService) GetSkills() []agent.SkillConfig {
+	return s.skillExecutor.GetSkills()
+}
+
+// ExecuteSkill 执行指定的 Skill
+func (s *ChatService) ExecuteSkill(ctx context.Context, skillName string, args string, req ChatRequest) (*ChatResponse, error) {
+	req = s.normalizeRequest(req)
+
+	if err := s.ensureSessionExists(req); err != nil {
+		return nil, fmt.Errorf("确保会话存在失败: %w", err)
+	}
+
+	// 保存用户消息（显示 skill 命令）
+	skillMsg := fmt.Sprintf("/%s %s", skillName, args)
+	userReq := req
+	userReq.Message = skillMsg
+	if err := s.saveUserMessage(userReq); err != nil {
+		return nil, fmt.Errorf("保存用户消息失败: %w", err)
+	}
+
+	// 从数据库加载历史消息
+	history := s.loadHistoryFromDB(req.SessionID)
+
+	// 执行 Skill
+	agentResp, err := s.skillExecutor.Execute(ctx, skillName, args, agent.ChatRequest{
+		SessionID: req.SessionID,
+		Message:   req.Message,
+		Hosts:     req.Hosts,
+		History:   history,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("执行 Skill 失败: %w", err)
+	}
+
+	// 转换响应
+	toolCalls := make([]ToolCallRecord, 0, len(agentResp.ToolCalls))
+	for _, tc := range agentResp.ToolCalls {
+		toolCalls = append(toolCalls, ToolCallRecord{
+			ID:     tc.ID,
+			Tool:   tc.Tool,
+			Params: tc.Params,
+			Result: tc.Result,
+			Error:  tc.Error,
+		})
+	}
+
+	resp := &ChatResponse{
+		SessionID: agentResp.SessionID,
+		Reply:     agentResp.Reply,
+		ToolCalls: toolCalls,
+		Thinking:  agentResp.Thinking,
+	}
+
+	if err := s.saveAssistantMessage(req, resp); err != nil {
+		return nil, fmt.Errorf("保存助手消息失败: %w", err)
+	}
+
+	s.updateSessionTitleIfNeeded(req)
+
+	return resp, nil
+}
+
+// IsSkillCommand 检查消息是否是 Skill 命令
+func (s *ChatService) IsSkillCommand(message string) bool {
+	return s.skillExecutor.IsSkillCommand(message)
+}
+
+// ParseSkillCommand 解析 Skill 命令
+func (s *ChatService) ParseSkillCommand(message string) (skillName string, args string, ok bool) {
+	return s.skillExecutor.ParseSkillCommand(message)
 }
