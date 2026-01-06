@@ -10,6 +10,7 @@ import { initNetworkMonitor, destroyNetworkMonitor } from './utils/networkMonito
 import { errorHandler, ErrorLevel } from './utils/errorHandler'
 import './styles/design-tokens.css'
 import './styles/theme.css'
+import './styles/bento.css'
 
 // 初始化网络监控
 initNetworkMonitor()

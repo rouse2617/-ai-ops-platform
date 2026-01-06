@@ -1,22 +1,20 @@
 <template>
-  <div class="chat-window-container" :class="{ 'sidebar-collapsed': sidebarCollapsed }">
-    <!-- 可折叠侧边栏 -->
-    <aside class="session-sidebar">
-      <div class="sidebar-header">
+  <div class="chat-bento-container">
+    <!-- 左侧会话列表 Bento Card -->
+    <aside class="session-panel bento-card bento-card-interactive" :class="{ collapsed: sidebarCollapsed }">
+      <div class="session-header">
         <template v-if="!sidebarCollapsed">
-          <span class="sidebar-title">对话</span>
-          <el-button :icon="Plus" size="small" circle @click="handleNewSession" title="新建对话" />
+          <span class="session-title">对话</span>
+          <button class="bento-btn-icon bento-btn-ghost" @click="handleNewSession" title="新建对话">
+            <el-icon><Plus /></el-icon>
+          </button>
         </template>
-        <el-button
-          :icon="sidebarCollapsed ? Expand : Fold"
-          size="small"
-          circle
-          @click="toggleSidebar"
-          :title="sidebarCollapsed ? '展开' : '收起'"
-        />
+        <button class="bento-btn-icon bento-btn-ghost" @click="toggleSidebar" :title="sidebarCollapsed ? '展开' : '收起'">
+          <el-icon><component :is="sidebarCollapsed ? Expand : Fold" /></el-icon>
+        </button>
       </div>
 
-      <!-- 展开状态：显示会话列表 -->
+      <!-- 展开状态 -->
       <div v-if="!sidebarCollapsed" class="session-list">
         <div
           v-for="session in sessions"
@@ -25,22 +23,32 @@
           :class="{ active: session.id === currentSessionId }"
           @click="handleSessionSelect(session.id)"
         >
-          <el-icon class="session-icon"><ChatDotRound /></el-icon>
-          <span class="session-title">{{ session.title || '未命名对话' }}</span>
-          <el-icon class="session-delete" @click.stop="handleDeleteSession(session.id)"><Delete /></el-icon>
+          <div class="session-item-icon">
+            <el-icon><ChatDotRound /></el-icon>
+          </div>
+          <div class="session-item-content">
+            <span class="session-item-title">{{ session.title || '未命名对话' }}</span>
+          </div>
+          <button class="session-delete" @click.stop="handleDeleteSession(session.id)">
+            <el-icon><Delete /></el-icon>
+          </button>
         </div>
-        <div v-if="sessions.length === 0" class="empty-sessions">
+        <div v-if="sessions.length === 0" class="empty-state">
+          <el-icon class="empty-icon"><ChatDotRound /></el-icon>
           <p>暂无对话</p>
+          <button class="bento-btn bento-btn-sm" @click="handleNewSession">开始新对话</button>
         </div>
       </div>
 
-      <!-- 折叠状态：只显示图标 -->
+      <!-- 折叠状态 -->
       <div v-else class="session-icons">
-        <el-button :icon="Plus" circle @click="handleNewSession" title="新建对话" />
+        <button class="session-icon-btn" @click="handleNewSession" title="新建对话">
+          <el-icon><Plus /></el-icon>
+        </button>
         <div
-          v-for="session in sessions.slice(0, 5)"
+          v-for="session in sessions.slice(0, 6)"
           :key="session.id"
-          class="session-icon-item"
+          class="session-icon-btn"
           :class="{ active: session.id === currentSessionId }"
           @click="handleSessionSelect(session.id)"
           :title="session.title || '未命名对话'"
@@ -50,18 +58,35 @@
       </div>
     </aside>
 
-    <!-- 聊天主区域 -->
-    <main class="chat-panel">
-      <div class="chat-header">
-        <span class="current-title">{{ currentSessionTitle }}</span>
-        <div class="host-section">
-          <el-icon class="host-icon"><Monitor /></el-icon>
-          <HostSelector v-model="selectedHostIds" />
-          <el-badge v-if="selectedHostIds.length > 0" :value="selectedHostIds.length" />
+    <!-- 主聊天区域 -->
+    <main class="chat-main">
+      <!-- 顶部信息栏 -->
+      <header class="chat-header bento-card bento-card-interactive">
+        <div class="header-left">
+          <div class="chat-title-wrapper">
+            <div class="chat-title-icon">
+              <el-icon><ChatDotRound /></el-icon>
+            </div>
+            <div class="chat-title-text">
+              <h1>{{ currentSessionTitle }}</h1>
+              <span class="chat-subtitle">AI 智能运维助手</span>
+            </div>
+          </div>
         </div>
-      </div>
+        <div class="header-right">
+          <div class="host-selector-wrapper">
+            <div class="host-label">
+              <el-icon><Monitor /></el-icon>
+              <span>目标主机</span>
+            </div>
+            <HostSelector v-model="selectedHostIds" />
+            <span v-if="selectedHostIds.length > 0" class="bento-badge">{{ selectedHostIds.length }}</span>
+          </div>
+        </div>
+      </header>
 
-      <div class="message-area">
+      <!-- 消息区域 -->
+      <div class="message-container">
         <MessageList
           :messages="messages"
           :is-loading="isLoading"
@@ -81,14 +106,17 @@
         />
       </div>
 
-      <div class="input-area">
-        <InputBox
-          ref="inputBoxRef"
-          :disabled="isLoading"
-          @send="handleSend"
-          @clear="handleClearMessages"
-        />
-      </div>
+      <!-- 输入区域 -->
+      <footer class="input-container">
+        <div class="input-wrapper bento-card bento-card-interactive">
+          <InputBox
+            ref="inputBoxRef"
+            :disabled="isLoading"
+            @send="handleSend"
+            @clear="handleClearMessages"
+          />
+        </div>
+      </footer>
     </main>
   </div>
 </template>
@@ -111,14 +139,12 @@ const messageListRef = ref()
 const inputBoxRef = ref()
 const prometheusRef = ref()
 
-// 侧边栏折叠状态
 const sidebarCollapsed = ref(false)
 
 const toggleSidebar = () => {
   sidebarCollapsed.value = !sidebarCollapsed.value
 }
 
-// Chat store state
 const messages = computed(() => chatStore.messages)
 const isLoading = computed(() => chatStore.isLoading)
 const sessions = computed(() => chatStore.sessions)
@@ -237,94 +263,119 @@ const handleClearMessages = async () => {
 </script>
 
 <style scoped>
-.chat-window-container {
+.chat-bento-container {
   display: flex;
   height: 100%;
-  width: 100%;
-  background: #fff;
+  gap: var(--bento-gap);
+  padding: var(--bento-gap);
+  background: var(--bento-bg);
 }
 
-/* 侧边栏 - 浅色系 */
-.session-sidebar {
-  width: 200px;
-  background: #f7f8fa;
-  border-right: 1px solid #e8e8e8;
+/* 会话面板 */
+.session-panel {
+  width: 260px;
   display: flex;
   flex-direction: column;
-  transition: width 0.2s ease;
-  flex-shrink: 0;
+  padding: 0;
+  overflow: hidden;
+  transition: width 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94);
 }
 
-.sidebar-collapsed .session-sidebar {
-  width: 50px;
+.session-panel.collapsed {
+  width: 64px;
 }
 
-.sidebar-header {
+.session-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 12px;
-  border-bottom: 1px solid #e8e8e8;
-  gap: 8px;
+  padding: 16px;
+  border-bottom: 1px solid var(--bento-border);
 }
 
-.sidebar-collapsed .sidebar-header {
+.session-panel.collapsed .session-header {
   justify-content: center;
-  padding: 12px 8px;
+  padding: 16px 12px;
 }
 
-.sidebar-title {
-  font-size: 14px;
+.session-title {
+  font-size: 15px;
   font-weight: 600;
-  color: #303133;
+  color: var(--color-text-primary);
 }
 
 .session-list {
   flex: 1;
   overflow-y: auto;
-  padding: 8px;
+  padding: 12px;
 }
 
 .session-item {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 8px 10px;
-  margin-bottom: 4px;
-  border-radius: 6px;
+  gap: 12px;
+  padding: 12px;
+  margin-bottom: 8px;
+  border-radius: var(--bento-radius-sm);
   cursor: pointer;
-  color: #606266;
-  transition: all 0.15s;
+  transition: all 0.2s;
+  background: transparent;
 }
 
 .session-item:hover {
-  background: #ebeef5;
-  color: #303133;
+  background: var(--color-bg-secondary);
 }
 
 .session-item.active {
-  background: #ecf5ff;
-  color: #409eff;
+  background: rgba(0, 113, 227, 0.08);
 }
 
-.session-icon {
+.session-item-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--color-bg-secondary);
+  color: var(--color-text-secondary);
   flex-shrink: 0;
-  font-size: 14px;
+  transition: all 0.2s;
 }
 
-.session-title {
+.session-item.active .session-item-icon {
+  background: var(--bento-accent-blue);
+  color: white;
+}
+
+.session-item-content {
   flex: 1;
-  font-size: 13px;
+  min-width: 0;
+}
+
+.session-item-title {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--color-text-primary);
+  white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  white-space: nowrap;
+  display: block;
 }
 
 .session-delete {
   opacity: 0;
-  font-size: 14px;
-  color: #909399;
-  transition: opacity 0.15s;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  border: none;
+  background: transparent;
+  color: var(--color-text-tertiary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
 }
 
 .session-item:hover .session-delete {
@@ -332,102 +383,235 @@ const handleClearMessages = async () => {
 }
 
 .session-delete:hover {
-  color: #f56c6c;
+  background: rgba(255, 55, 95, 0.1);
+  color: var(--bento-accent-pink);
 }
 
-.empty-sessions {
+/* 空状态 */
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 20px;
   text-align: center;
-  color: #909399;
-  font-size: 12px;
-  padding: 20px;
 }
 
-/* 折叠状态图标列表 */
+.empty-icon {
+  font-size: 48px;
+  color: var(--color-text-tertiary);
+  margin-bottom: 16px;
+}
+
+.empty-state p {
+  color: var(--color-text-secondary);
+  margin-bottom: 16px;
+}
+
+/* 折叠状态图标 */
 .session-icons {
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: 8px 0;
+  padding: 12px 8px;
   gap: 8px;
 }
 
-.session-icon-item {
-  width: 36px;
-  height: 36px;
+.session-icon-btn {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  border: none;
+  background: transparent;
+  color: var(--color-text-secondary);
+  cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 8px;
-  cursor: pointer;
-  color: #606266;
-  transition: all 0.15s;
+  transition: all 0.2s;
+  font-size: 18px;
 }
 
-.session-icon-item:hover {
-  background: #ebeef5;
-  color: #303133;
+.session-icon-btn:hover {
+  background: var(--color-bg-secondary);
+  color: var(--color-text-primary);
 }
 
-.session-icon-item.active {
-  background: #ecf5ff;
-  color: #409eff;
+.session-icon-btn.active {
+  background: rgba(0, 113, 227, 0.1);
+  color: var(--bento-accent-blue);
 }
 
-/* 聊天面板 */
-.chat-panel {
+/* 主聊天区域 */
+.chat-main {
   flex: 1;
   display: flex;
   flex-direction: column;
-  overflow: hidden;
+  gap: var(--bento-gap);
   min-width: 0;
 }
 
+/* 头部 */
 .chat-header {
   display: flex;
   align-items: center;
-  gap: 16px;
-  padding: 12px 20px;
-  border-bottom: 1px solid #f0f0f0;
+  justify-content: space-between;
+  padding: 16px 24px;
   flex-shrink: 0;
 }
 
-.current-title {
-  font-size: 15px;
-  font-weight: 500;
-  color: #303133;
-}
-
-.host-section {
-  flex: 1;
+.header-left {
   display: flex;
   align-items: center;
-  gap: 8px;
-  max-width: 400px;
-  padding: 6px 12px;
-  border: 1px solid #dcdfe6;
-  border-radius: 8px;
+  gap: 16px;
 }
 
-.host-icon {
-  color: #909399;
+.chat-title-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 14px;
 }
 
-.message-area {
+.chat-title-icon {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  background: var(--bento-gradient-ocean);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-size: 20px;
+}
+
+.chat-title-text h1 {
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+  margin: 0;
+  line-height: 1.3;
+}
+
+.chat-subtitle {
+  font-size: 13px;
+  color: var(--color-text-secondary);
+}
+
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.host-selector-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 16px;
+  background: var(--color-bg-secondary);
+  border-radius: 12px;
+}
+
+.host-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--color-text-secondary);
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+/* 消息区域 */
+.message-container {
   flex: 1;
   overflow: hidden;
   display: flex;
   flex-direction: column;
+  background: var(--bento-card-bg);
+  border-radius: var(--bento-radius);
+  border: 1px solid var(--bento-border);
 }
 
-.message-area :deep(.message-list-container) {
+.message-container :deep(.message-list-container) {
   max-width: 900px;
   margin: 0 auto;
   width: 100%;
+  padding: 24px;
 }
 
-.input-area {
-  background: #fff;
+/* 输入区域 */
+.input-container {
   flex-shrink: 0;
-  box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.03);
+}
+
+.input-wrapper {
+  padding: 16px 20px;
+}
+
+/* 响应式 */
+@media (max-width: 900px) {
+  .chat-bento-container {
+    padding: 12px;
+    gap: 12px;
+  }
+
+  .session-panel {
+    width: 64px;
+  }
+
+  .session-panel .session-header {
+    justify-content: center;
+    padding: 12px 8px;
+  }
+
+  .session-panel .session-list {
+    display: none;
+  }
+
+  .session-panel .session-icons {
+    display: flex;
+  }
+
+  .chat-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 16px;
+  }
+
+  .header-right {
+    width: 100%;
+  }
+
+  .host-selector-wrapper {
+    flex: 1;
+  }
+}
+
+@media (max-width: 600px) {
+  .session-panel {
+    display: none;
+  }
+
+  .chat-bento-container {
+    padding: 8px;
+  }
+}
+
+/* 暗色模式适配 */
+[data-theme="dark"] .session-item:hover {
+  background: var(--color-surface-hover);
+}
+
+[data-theme="dark"] .session-item.active {
+  background: rgba(0, 113, 227, 0.15);
+}
+
+[data-theme="dark"] .session-icon-btn:hover {
+  background: var(--color-surface-hover);
+}
+
+[data-theme="dark"] .host-selector-wrapper {
+  background: var(--color-surface);
 }
 </style>

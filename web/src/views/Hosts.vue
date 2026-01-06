@@ -1,139 +1,191 @@
 <template>
-  <div class="hosts-page">
+  <div class="hosts-bento-page">
     <!-- 页面头部 -->
-    <div class="page-header">
-      <div class="header-left">
-        <h2 class="page-title">主机管理</h2>
-        <p class="page-description">管理您的服务器主机，支持批量操作</p>
-      </div>
-      <div class="header-actions">
-        <el-button type="primary" :icon="Plus" @click="handleAdd">
-          添加主机
-        </el-button>
-      </div>
-    </div>
-
-    <!-- 统计卡片 -->
-    <div class="stats-row">
-      <div class="stat-card">
-        <div class="stat-icon online">
-          <el-icon><CircleCheck /></el-icon>
-        </div>
-        <div class="stat-content">
-          <div class="stat-value">{{ onlineCount }}</div>
-          <div class="stat-label">在线主机</div>
-        </div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-icon offline">
-          <el-icon><CircleClose /></el-icon>
-        </div>
-        <div class="stat-content">
-          <div class="stat-value">{{ offlineCount }}</div>
-          <div class="stat-label">离线主机</div>
-        </div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-icon warning">
-          <el-icon><Warning /></el-icon>
-        </div>
-        <div class="stat-content">
-          <div class="stat-value">{{ unknownCount }}</div>
-          <div class="stat-label">状态未知</div>
-        </div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-icon info">
+    <header class="page-header bento-card bento-card-interactive">
+      <div class="header-content">
+        <div class="header-icon">
           <el-icon><Monitor /></el-icon>
         </div>
-        <div class="stat-content">
-          <div class="stat-value">{{ hostStore.total }}</div>
-          <div class="stat-label">总主机数</div>
+        <div class="header-text">
+          <h1>主机管理</h1>
+          <p>管理您的服务器主机，支持批量操作</p>
+        </div>
+      </div>
+      <div class="header-actions">
+        <button class="bento-btn" @click="handleAdd">
+          <el-icon><Plus /></el-icon>
+          <span>添加主机</span>
+        </button>
+      </div>
+    </header>
+
+    <!-- 统计卡片 Bento Grid -->
+    <div class="stats-bento-grid">
+      <div class="bento-card stat-card stat-online" @click="statusFilter = 'online'">
+        <div class="stat-icon-wrapper">
+          <el-icon><CircleCheck /></el-icon>
+        </div>
+        <div class="stat-info">
+          <span class="stat-value">{{ onlineCount }}</span>
+          <span class="stat-label">在线主机</span>
+        </div>
+        <div class="stat-trend positive" v-if="onlineCount > 0">
+          <el-icon><Top /></el-icon>
+          <span>运行中</span>
+        </div>
+      </div>
+
+      <div class="bento-card stat-card stat-offline" @click="statusFilter = 'offline'">
+        <div class="stat-icon-wrapper">
+          <el-icon><CircleClose /></el-icon>
+        </div>
+        <div class="stat-info">
+          <span class="stat-value">{{ offlineCount }}</span>
+          <span class="stat-label">离线主机</span>
+        </div>
+        <div class="stat-trend negative" v-if="offlineCount > 0">
+          <el-icon><Bottom /></el-icon>
+          <span>需关注</span>
+        </div>
+      </div>
+
+      <div class="bento-card stat-card stat-warning" @click="statusFilter = 'unknown'">
+        <div class="stat-icon-wrapper">
+          <el-icon><Warning /></el-icon>
+        </div>
+        <div class="stat-info">
+          <span class="stat-value">{{ unknownCount }}</span>
+          <span class="stat-label">状态未知</span>
+        </div>
+      </div>
+
+      <div class="bento-card stat-card stat-total" @click="statusFilter = ''">
+        <div class="stat-icon-wrapper">
+          <el-icon><DataBoard /></el-icon>
+        </div>
+        <div class="stat-info">
+          <span class="stat-value">{{ hostStore.total }}</span>
+          <span class="stat-label">总主机数</span>
+        </div>
+        <div class="stat-progress">
+          <div class="progress-bar">
+            <div class="progress-fill online" :style="{ width: onlinePercent + '%' }"></div>
+            <div class="progress-fill offline" :style="{ width: offlinePercent + '%' }"></div>
+          </div>
         </div>
       </div>
     </div>
 
     <!-- 工具栏 -->
-    <div class="toolbar">
+    <div class="toolbar-card bento-card bento-card-interactive">
       <div class="toolbar-left">
-        <el-input
-          v-model="keyword"
-          placeholder="搜索主机名称、地址或标签..."
-          :prefix-icon="Search"
-          clearable
-          class="search-input"
-          @input="handleSearch"
-        />
+        <div class="search-wrapper">
+          <el-icon class="search-icon"><Search /></el-icon>
+          <input
+            v-model="keyword"
+            type="text"
+            class="bento-input search-input"
+            placeholder="搜索主机名称、地址或标签..."
+            @input="handleSearch"
+          />
+        </div>
 
-        <!-- 视图切换 -->
-        <el-radio-group v-model="viewMode" class="view-toggle">
-          <el-tooltip content="列表视图" placement="top">
-            <el-radio-button value="table">
-              <el-icon><List /></el-icon>
-            </el-radio-button>
-          </el-tooltip>
-          <el-tooltip content="卡片视图" placement="top">
-            <el-radio-button value="card">
-              <el-icon><Grid /></el-icon>
-            </el-radio-button>
-          </el-tooltip>
-        </el-radio-group>
+        <div class="view-toggle">
+          <button
+            class="toggle-btn"
+            :class="{ active: viewMode === 'table' }"
+            @click="viewMode = 'table'"
+            title="列表视图"
+          >
+            <el-icon><List /></el-icon>
+          </button>
+          <button
+            class="toggle-btn"
+            :class="{ active: viewMode === 'card' }"
+            @click="viewMode = 'card'"
+            title="卡片视图"
+          >
+            <el-icon><Grid /></el-icon>
+          </button>
+        </div>
 
-        <!-- 筛选器 -->
-        <el-select v-model="statusFilter" placeholder="状态" clearable>
-          <el-option label="全部" value="" />
-          <el-option label="在线" value="online" />
-          <el-option label="离线" value="offline" />
-          <el-option label="未知" value="unknown" />
-        </el-select>
+        <div class="filter-chips">
+          <button
+            class="filter-chip"
+            :class="{ active: statusFilter === '' }"
+            @click="statusFilter = ''"
+          >
+            全部
+          </button>
+          <button
+            class="filter-chip online"
+            :class="{ active: statusFilter === 'online' }"
+            @click="statusFilter = 'online'"
+          >
+            <span class="chip-dot"></span>
+            在线
+          </button>
+          <button
+            class="filter-chip offline"
+            :class="{ active: statusFilter === 'offline' }"
+            @click="statusFilter = 'offline'"
+          >
+            <span class="chip-dot"></span>
+            离线
+          </button>
+        </div>
       </div>
 
       <div class="toolbar-right">
-        <el-text v-if="selectedHosts.length > 0" type="info">
-          已选择 {{ selectedHosts.length }} 台主机
-        </el-text>
-        <el-button
+        <span v-if="selectedHosts.length > 0" class="selection-info">
+          已选择 {{ selectedHosts.length }} 台
+        </span>
+        <button
           v-if="selectedHosts.length > 0"
-          :icon="Upload"
+          class="bento-btn bento-btn-secondary bento-btn-sm"
           @click="showImport = true"
         >
-          批量导入
-        </el-button>
-        <el-button
+          <el-icon><Upload /></el-icon>
+          <span>导入</span>
+        </button>
+        <button
           v-if="selectedHosts.length > 0"
-          :icon="Delete"
-          type="danger"
+          class="bento-btn bento-btn-sm"
+          style="background: var(--bento-accent-pink)"
           @click="handleBatchDelete"
         >
-          批量删除
-        </el-button>
+          <el-icon><Delete /></el-icon>
+          <span>删除</span>
+        </button>
       </div>
     </div>
 
-    <!-- 内容区域 - 动态切换视图 -->
-    <HostTable
-      v-if="viewMode === 'table'"
-      :hosts="filteredHosts"
-      :total="filteredTotal"
-      :loading="hostStore.loading"
-      @edit="handleEdit"
-      @delete="handleDelete"
-      @test="handleTest"
-      @selection-change="handleSelectionChange"
-      @page-change="handlePageChange"
-    />
+    <!-- 内容区域 -->
+    <div class="content-area bento-card bento-card-interactive">
+      <HostTable
+        v-if="viewMode === 'table'"
+        :hosts="filteredHosts"
+        :total="filteredTotal"
+        :loading="hostStore.loading"
+        @edit="handleEdit"
+        @delete="handleDelete"
+        @test="handleTest"
+        @selection-change="handleSelectionChange"
+        @page-change="handlePageChange"
+      />
 
-    <HostGrid
-      v-else
-      :hosts="filteredHosts"
-      :total="filteredTotal"
-      :loading="hostStore.loading"
-      @edit="handleEdit"
-      @delete="handleDelete"
-      @test="handleTest"
-      @selection-change="handleSelectionChange"
-      @page-change="handlePageChange"
-    />
+      <HostGrid
+        v-else
+        :hosts="filteredHosts"
+        :total="filteredTotal"
+        :loading="hostStore.loading"
+        @edit="handleEdit"
+        @delete="handleDelete"
+        @test="handleTest"
+        @selection-change="handleSelectionChange"
+        @page-change="handlePageChange"
+      />
+    </div>
 
     <!-- 弹窗 -->
     <HostForm
@@ -155,7 +207,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   Search, Plus, Upload, Delete,
   CircleCheck, CircleClose, Warning, Monitor,
-  List, Grid
+  List, Grid, Top, Bottom, DataBoard
 } from '@element-plus/icons-vue'
 import { useHostStore } from '@/stores/host'
 import type { Host } from '@/api/host'
@@ -168,13 +220,12 @@ const hostStore = useHostStore()
 
 const keyword = ref('')
 const statusFilter = ref('')
-const viewMode = ref<'table' | 'card'>('table')
+const viewMode = ref<'table' | 'card'>('card')
 const showForm = ref(false)
 const showImport = ref(false)
 const currentHost = ref<Host | null>(null)
 const selectedHosts = ref<Host[]>([])
 
-// 统计数据
 const onlineCount = computed(() =>
   hostStore.hosts.filter(h => h.status === 'online').length
 )
@@ -185,7 +236,13 @@ const unknownCount = computed(() =>
   hostStore.hosts.filter(h => !h.status || h.status === 'unknown').length
 )
 
-// 过滤后的主机
+const onlinePercent = computed(() =>
+  hostStore.total > 0 ? (onlineCount.value / hostStore.total) * 100 : 0
+)
+const offlinePercent = computed(() =>
+  hostStore.total > 0 ? (offlineCount.value / hostStore.total) * 100 : 0
+)
+
 const filteredHosts = computed(() => {
   let hosts = hostStore.hosts
 
@@ -234,17 +291,11 @@ const handleDelete = async (host: Host) => {
     await ElMessageBox.confirm(
       `确定要删除主机 "${host.name}" 吗？`,
       '提示',
-      {
-        confirmButtonText: '确定',
-        cancelButtonText: '取消',
-        type: 'warning'
-      }
+      { confirmButtonText: '确定', cancelButtonText: '取消', type: 'warning' }
     )
     await hostStore.removeHost(host.id)
     ElMessage.success('删除成功')
-  } catch {
-    // 取消删除
-  }
+  } catch {}
 }
 
 const handleTest = async (host: Host) => {
@@ -256,7 +307,7 @@ const handleTest = async (host: Host) => {
     } else {
       ElMessage.error(result.message || '连接失败')
     }
-  } catch (error) {
+  } catch {
     ElMessage.error('测试连接失败')
   }
 }
@@ -272,20 +323,14 @@ const handleBatchDelete = async () => {
     await ElMessageBox.confirm(
       `确定要删除选中的 ${selectedHosts.value.length} 台主机吗？`,
       '提示',
-      {
-        confirmButtonText: '确定',
-        cancelButtonText: '取消',
-        type: 'warning'
-      }
+      { confirmButtonText: '确定', cancelButtonText: '取消', type: 'warning' }
     )
     for (const host of selectedHosts.value) {
       await hostStore.removeHost(host.id)
     }
     ElMessage.success('批量删除成功')
     selectedHosts.value = []
-  } catch {
-    // 取消删除
-  }
+  } catch {}
 }
 
 const handlePageChange = (page: number, pageSize: number) => {
@@ -301,157 +346,341 @@ const handleFormSubmit = async (data: Omit<Host, 'id' | 'createdAt' | 'updatedAt
       await hostStore.addHost(data)
       ElMessage.success('添加成功')
     }
-  } catch (error) {
-    // 错误已在 store 中处理
-  }
+  } catch {}
 }
 
 const handleImportSubmit = async (hosts: Omit<Host, 'id' | 'createdAt' | 'updatedAt'>[]) => {
   try {
     const result = await hostStore.batchImport(hosts)
     ElMessage.success(`成功导入 ${result.success} 台主机${result.failed > 0 ? `，失败 ${result.failed} 台` : ''}`)
-  } catch (error) {
-    // 错误已在 store 中处理
-  }
+  } catch {}
 }
 </script>
 
 <style scoped>
-.hosts-page {
+.hosts-bento-page {
   display: flex;
   flex-direction: column;
-  gap: var(--spacing-5);
+  gap: var(--bento-gap);
+  padding: var(--bento-gap);
+  background: var(--bento-bg);
+  min-height: 100%;
 }
 
+/* 页面头部 */
 .page-header {
   display: flex;
+  align-items: center;
   justify-content: space-between;
-  align-items: flex-start;
+  padding: 24px;
 }
 
-.page-title {
-  font-size: var(--text-3xl);
-  font-weight: var(--font-semibold);
-  color: var(--color-gray-800);
-  margin: 0 0 var(--spacing-1) 0;
+.header-content {
+  display: flex;
+  align-items: center;
+  gap: 16px;
 }
 
-.page-description {
-  font-size: var(--text-sm);
-  color: var(--color-gray-500);
+.header-icon {
+  width: 56px;
+  height: 56px;
+  border-radius: 16px;
+  background: var(--bento-gradient-purple);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-size: 28px;
+}
+
+.header-text h1 {
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--color-text-primary);
+  margin: 0 0 4px 0;
+}
+
+.header-text p {
+  font-size: 14px;
+  color: var(--color-text-secondary);
   margin: 0;
 }
 
-.header-actions {
-  display: flex;
-  gap: var(--spacing-3);
-}
-
-/* 统计卡片 */
-.stats-row {
+/* 统计卡片网格 */
+.stats-bento-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: var(--spacing-4);
+  grid-template-columns: repeat(4, 1fr);
+  gap: var(--bento-gap);
 }
 
 .stat-card {
-  background: #fff;
-  border-radius: var(--radius-xl);
-  padding: var(--spacing-5);
+  padding: 20px;
   display: flex;
-  align-items: center;
-  gap: var(--spacing-4);
-  box-shadow: var(--shadow-sm);
-  border: 1px solid var(--color-gray-200);
-  transition: all var(--transition-fast);
+  flex-direction: column;
+  gap: 16px;
+  cursor: pointer;
 }
 
-.stat-card:hover {
-  box-shadow: var(--shadow-md);
-  transform: translateY(-2px);
-}
-
-.stat-icon {
+.stat-icon-wrapper {
   width: 48px;
   height: 48px;
-  border-radius: var(--radius-lg);
+  border-radius: 14px;
   display: flex;
   align-items: center;
   justify-content: center;
   font-size: 24px;
 }
 
-.stat-icon.online {
-  background: var(--badge-online-bg);
-  color: var(--badge-online-text);
+.stat-online .stat-icon-wrapper {
+  background: rgba(48, 209, 88, 0.15);
+  color: var(--bento-accent-green);
 }
 
-.stat-icon.offline {
-  background: var(--badge-offline-bg);
-  color: var(--badge-offline-text);
+.stat-offline .stat-icon-wrapper {
+  background: rgba(255, 55, 95, 0.15);
+  color: var(--bento-accent-pink);
 }
 
-.stat-icon.warning {
-  background: var(--color-warning-light);
-  color: var(--color-warning);
+.stat-warning .stat-icon-wrapper {
+  background: rgba(255, 149, 0, 0.15);
+  color: var(--bento-accent-orange);
 }
 
-.stat-icon.info {
-  background: var(--color-info-light);
-  color: var(--color-info);
+.stat-total .stat-icon-wrapper {
+  background: rgba(0, 113, 227, 0.15);
+  color: var(--bento-accent-blue);
 }
 
-.stat-content {
-  flex: 1;
+.stat-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
 }
 
 .stat-value {
-  font-size: var(--text-3xl);
-  font-weight: var(--font-bold);
-  color: var(--color-gray-800);
+  font-size: 36px;
+  font-weight: 700;
+  color: var(--color-text-primary);
   line-height: 1;
 }
 
 .stat-label {
-  font-size: var(--text-sm);
-  color: var(--color-gray-500);
-  margin-top: var(--spacing-2);
+  font-size: 13px;
+  color: var(--color-text-secondary);
+}
+
+.stat-trend {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.stat-trend.positive {
+  color: var(--bento-accent-green);
+}
+
+.stat-trend.negative {
+  color: var(--bento-accent-pink);
+}
+
+.stat-progress {
+  margin-top: auto;
+}
+
+.progress-bar {
+  height: 6px;
+  background: var(--color-bg-secondary);
+  border-radius: 3px;
+  overflow: hidden;
+  display: flex;
+}
+
+.progress-fill {
+  height: 100%;
+  transition: width 0.3s ease;
+}
+
+.progress-fill.online {
+  background: var(--bento-accent-green);
+}
+
+.progress-fill.offline {
+  background: var(--bento-accent-pink);
 }
 
 /* 工具栏 */
-.toolbar {
+.toolbar-card {
   display: flex;
-  justify-content: space-between;
   align-items: center;
-  background: #fff;
-  padding: var(--spacing-4);
-  border-radius: var(--radius-xl);
-  box-shadow: var(--shadow-sm);
-  border: 1px solid var(--color-gray-200);
+  justify-content: space-between;
+  padding: 16px 20px;
+  gap: 16px;
   flex-wrap: wrap;
-  gap: var(--spacing-4);
 }
 
 .toolbar-left {
   display: flex;
   align-items: center;
-  gap: var(--spacing-3);
+  gap: 16px;
   flex: 1;
-  min-width: 0;
+}
+
+.search-wrapper {
+  position: relative;
+  width: 280px;
+}
+
+.search-icon {
+  position: absolute;
+  left: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--color-text-tertiary);
+  font-size: 16px;
 }
 
 .search-input {
-  width: 240px;
-  max-width: 100%;
+  padding-left: 42px;
+  width: 100%;
 }
 
-.view-toggle :deep(.el-radio-button__inner) {
-  padding: 8px 12px;
+.view-toggle {
+  display: flex;
+  background: var(--color-bg-secondary);
+  border-radius: 10px;
+  padding: 4px;
+}
+
+.toggle-btn {
+  width: 36px;
+  height: 36px;
+  border: none;
+  background: transparent;
+  border-radius: 8px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-text-secondary);
+  transition: all 0.2s;
+}
+
+.toggle-btn:hover {
+  color: var(--color-text-primary);
+}
+
+.toggle-btn.active {
+  background: var(--bento-card-bg);
+  color: var(--bento-accent-blue);
+  box-shadow: var(--bento-shadow);
+}
+
+.filter-chips {
+  display: flex;
+  gap: 8px;
+}
+
+.filter-chip {
+  padding: 8px 16px;
+  border: none;
+  background: var(--color-bg-secondary);
+  border-radius: 20px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.filter-chip:hover {
+  background: var(--color-bg-tertiary);
+}
+
+.filter-chip.active {
+  background: var(--bento-accent-blue);
+  color: white;
+}
+
+.filter-chip.online.active {
+  background: var(--bento-accent-green);
+}
+
+.filter-chip.offline.active {
+  background: var(--bento-accent-pink);
+}
+
+.chip-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
 }
 
 .toolbar-right {
   display: flex;
   align-items: center;
-  gap: var(--spacing-3);
+  gap: 12px;
+}
+
+.selection-info {
+  font-size: 13px;
+  color: var(--color-text-secondary);
+  padding: 8px 12px;
+  background: var(--color-bg-secondary);
+  border-radius: 8px;
+}
+
+/* 内容区域 */
+.content-area {
+  flex: 1;
+  padding: 0;
+  overflow: hidden;
+}
+
+/* 响应式 */
+@media (max-width: 1200px) {
+  .stats-bento-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 768px) {
+  .stats-bento-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .toolbar-card {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .toolbar-left {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .search-wrapper {
+    width: 100%;
+  }
+
+  .filter-chips {
+    flex-wrap: wrap;
+  }
+
+  .page-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 16px;
+  }
+}
+
+/* 暗色模式 */
+[data-theme="dark"] .toggle-btn.active {
+  background: var(--color-surface);
 }
 </style>
