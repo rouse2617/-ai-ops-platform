@@ -1,298 +1,415 @@
-# AI-Ops Platform
+<p align="center">
+  <img src="docs/assets/logo.svg" alt="AI-Ops Logo" width="120" height="120">
+</p>
 
-AI 驱动的智能运维平台，通过自然语言与服务器交互，实现智能化运维管理。
+<h1 align="center">AI-Ops Platform</h1>
 
-## 架构概览
+<p align="center">
+  <strong>企业级 AI 驱动智能运维平台</strong>
+</p>
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                         Web Frontend                             │
-│                      (Vue 3 + TypeScript)                        │
-└─────────────────────────────────────────────────────────────────┘
-                                │
-                                ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                         Go Backend                               │
-│                      (Gin + SQLite)                              │
-│                       Port: 1280                                 │
-│  ┌─────────────────────────────────────────────────────────────┐ │
-│  │              LLM Client (多 Provider 支持)                  │ │
-│  │         OpenAI / Anthropic Claude API                       │ │
-│  └─────────────────────────────────────────────────────────────┘ │
-│  ┌─────────────────────────────────────────────────────────────┐ │
-│  │                    Tool Registry                            │ │
-│  │    内置工具 + MCP 工具 + 脚本工具 (统一管理)                 │ │
-│  └─────────────────────────────────────────────────────────────┘ │
-│  ┌─────────────────────────────────────────────────────────────┐ │
-│  │              MCP (Model Context Protocol)                   │ │
-│  │         客户端 (连接外部服务) + 服务端 (暴露工具)            │ │
-│  └─────────────────────────────────────────────────────────────┘ │
-│  ┌─────────────────────────────────────────────────────────────┐ │
-│  │                     SSH Pool                                │ │
-│  │              golang.org/x/crypto/ssh                        │ │
-│  └─────────────────────────────────────────────────────────────┘ │
-└─────────────────────────────────────────────────────────────────┘
-          │                                    │
-          ▼                                    ▼
-┌──────────────────────┐          ┌──────────────────────┐
-│   Target Hosts (SSH) │          │  External MCP Servers │
-└──────────────────────┘          └──────────────────────┘
-```
+<p align="center">
+  通过自然语言与基础设施交互，实现智能化运维管理
+</p>
 
-## 功能特性
+<p align="center">
+  <a href="#核心特性">核心特性</a> •
+  <a href="#快速开始">快速开始</a> •
+  <a href="#架构设计">架构设计</a> •
+  <a href="#部署指南">部署指南</a> •
+  <a href="#api-文档">API 文档</a>
+</p>
 
-- **自然语言交互**: 通过对话方式执行运维操作
-- **多 LLM 支持**: 支持 OpenAI 和 Anthropic Claude API
-- **多主机管理**: 支持管理多台服务器
-- **实时监控**: CPU、内存、磁盘使用率监控
-- **日志分析**: 智能日志查询和分析
-- **进程管理**: 查看和管理系统进程
-- **命令执行**: 安全的远程命令执行
-- **MCP 集成**: 支持 Model Context Protocol，可扩展外部工具
+<p align="center">
+  <img src="https://img.shields.io/badge/Go-1.21+-00ADD8?style=flat-square&logo=go" alt="Go Version">
+  <img src="https://img.shields.io/badge/Vue-3.x-4FC08D?style=flat-square&logo=vue.js" alt="Vue Version">
+  <img src="https://img.shields.io/badge/TypeScript-5.x-3178C6?style=flat-square&logo=typescript" alt="TypeScript">
+  <img src="https://img.shields.io/badge/License-MIT-yellow?style=flat-square" alt="License">
+</p>
 
-## MCP (Model Context Protocol) 支持
+---
 
-本平台支持 MCP 协议，实现双角色架构：
+## 产品概述
 
-### 作为 MCP 客户端
-连接外部 MCP 服务，扩展工具能力：
+**AI-Ops Platform** 是新一代企业级智能运维平台，将大语言模型（LLM）能力与传统运维工具深度融合，让运维工程师通过自然语言即可完成复杂的运维操作。
 
-```yaml
-# config.yaml
-mcp:
-  servers:
-    - name: "demo-tools"
-      url: "http://localhost:3001"
-      enabled: true
-```
+### 为什么选择 AI-Ops？
 
-### 作为 MCP 服务端
-通过 `/api/mcp/rpc` 端点暴露所有内置工具给外部 MCP 客户端：
+| 传��运维 | AI-Ops 智能运维 |
+|---------|----------------|
+| 记忆大量命令和参数 | 自然语言描述意图 |
+| 手动分析日志和指标 | AI 自动关联分析 |
+| 逐台主机执行操作 | 批量智能编排 |
+| 被动响应告警 | 主动异常检测 |
+| 依赖专家经验 | 知识沉淀复用 |
 
-```bash
-# 初始化
-curl -X POST http://localhost:1280/api/mcp/rpc \
-  -H "Content-Type: application/json" \
-  -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05"}}'
+---
 
-# 获取工具列表
-curl -X POST http://localhost:1280/api/mcp/rpc \
-  -H "Content-Type: application/json" \
-  -d '{"jsonrpc":"2.0","id":2,"method":"tools/list"}'
+## 核心特性
 
-# 调用工具
-curl -X POST http://localhost:1280/api/mcp/rpc \
-  -H "Content-Type: application/json" \
-  -d '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"list_hosts","arguments":{}}}'
-```
-
-### MCP 工具流程
+### 自然语言运维
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                       Tool Registry                              │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐           │
-│  │ 内置工具(17) │  │ MCP工具(N)   │  │ 脚本工具     │           │
-│  │ list_hosts   │  │ get_weather  │  │ custom.sh    │           │
-│  │ exec_command │  │ calculate    │  │ ...          │           │
-│  └──────────────┘  └──────────────┘  └──────────────┘           │
-└─────────────────────────────────────────────────────────────────┘
-         ↑                   ↑
-         │                   │
-    直接注册            mcp.Adapter 适配
-                             ↑
-                      外部 MCP 服务 (HTTP/stdio)
+用户: "检查所有生产服务器的磁盘使用情况，找出使用率超过 80% 的"
+
+AI-Ops: 正在检查 12 台生产服务器...
+        发现 3 台服务器磁盘使用率超过阈值：
+        • prod-web-03: /data 分区 87%
+        • prod-db-01: /var/lib/mysql 92%
+        • prod-log-02: /var/log 85%
+        建议: 清理日志或扩容磁盘
 ```
+
+### 多 LLM 支持
+
+- **Anthropic Claude** - 推荐，强大的推理和工具调用能力
+- **OpenAI GPT-4** - 广泛兼容，生态丰富
+- **私有化部署** - 支持自建 LLM 服务
+
+### MCP 协议集成
+
+基于 [Model Context Protocol](https://modelcontextprotocol.io/) 实现工具扩展：
+
+- **作为 MCP 客户端**: 连接外部 MCP 服务，扩展工具能力
+- **作为 MCP 服务端**: 暴露内置工具给 Claude Desktop 等客户端
+
+### 企业级安全
+
+- SSH 密钥/密码加密存储 (AES-256)
+- 操作审计日志
+- 危险命令拦截与确认
+- 基于角色的访问控制 (RBAC)
+
+---
+
+## 功能矩阵
+
+| 模块 | 功能 | 状态 |
+|-----|------|-----|
+| **主机管理** | 多主机注册、分组、标签 | ✅ |
+| **智能对话** | 自然语言交互、上下文理解 | ✅ |
+| **命令执行** | 远程命令、批量执行、结果聚合 | ✅ |
+| **系统监控** | CPU/内存/磁盘/网络实时监控 | ✅ |
+| **日志分析** | 智能日志查询、异常检测 | ✅ |
+| **进程管理** | 进程列表、资源占用分析 | ✅ |
+| **脚本管理** | 脚本库、参数化执行 | ✅ |
+| **MCP 集成** | 工具扩展、协议适配 | ✅ |
+| **Prometheus** | 指标查询、语义化告警 | ✅ |
+| **根因分析** | 故障诊断、关联分析 | ✅ |
+| **趋势预测** | 容量规划、异常预警 | ✅ |
+
+---
+
+## 架构设计
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│                           Web Frontend                                   │
+│                    Vue 3 + TypeScript + Bento UI                        │
+└─────────────────────────────────────────────────────────────────────────┘
+                                    │
+                                    ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│                           API Gateway                                    │
+│                         Go + Gin Framework                               │
+├─────────────────────────────────────────────────────────────────────────┤
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐    │
+│  │  Chat API   │  │  Host API   │  │  Tool API   │  │  MCP API    │    │
+│  └─────────────┘  └─────────────┘  └─────────────┘  └─────────────┘    │
+├─────────────────────────────────────────────────────────────────────────┤
+│                          Service Layer                                   │
+│  ┌─────────────────────────────────────────────────────────────────┐    │
+│  │                      AI Agent Engine                             │    │
+│  │  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐        │    │
+│  │  │ Planning │  │ Routing  │  │ Execution│  │ Learning │        │    │
+│  │  └──────────┘  └──────────┘  └──────────┘  └──────────┘        │    │
+│  └─────────────────────────────────────────────────────────────────┘    │
+│  ┌─────────────────────────────────────────────────────────────────┐    │
+│  │                      Tool Registry                               │    │
+│  │  ┌──────────┐  ┌──────────┐  ┌──���───────┐  ┌──────────┐        │    │
+│  │  │ Built-in │  │   MCP    │  │  Script  │  │ Prometheus│        │    │
+│  │  │  Tools   │  │  Tools   │  │  Tools   │  │  Tools   │        │    │
+│  │  └──────────┘  └──────────┘  └──────────┘  └──────────┘        │    │
+│  └─��───────────────────────────────────────────────────────────────┘    │
+├─────────────────────────────────────────────────────────────────────────┤
+│                        Infrastructure Layer                              │
+│  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌���─────────┐               │
+│  │ SSH Pool │  │ LLM Client│  │ MCP Client│  │ Database │               │
+│  └──────────┘  └──────────┘  └──────────┘  └──────────┘               │
+└─────────────────────────────────────────────────────────────────────────┘
+         │                │                │
+         ▼                ▼                ▼
+��──────────────┐  ┌──────────────┐  ┌──────────────┐
+│ Target Hosts │  │  LLM APIs    │  │ MCP Servers  │
+│    (SSH)     │  │ Claude/GPT   │  │  (External)  │
+└──────────────┘  └──────────────┘  └──────────────┘
+```
+
+---
 
 ## 快速开始
 
 ### 环境要求
 
 - Go 1.21+
-- Node.js 18+ (仅前端开发需要)
-- pnpm (推荐) 或 npm
+- Node.js 18+
+- SQLite 3.x (内置)
 
 ### 1. 克隆项目
 
 ```bash
-git clone https://github.com/rouse2617/ai-ops-platform.git
+git clone https://github.com/your-org/ai-ops-platform.git
 cd ai-ops-platform
 ```
 
 ### 2. 配置文件
 
 ```bash
-# 复制配置模板
 cp config.yaml.example config.yaml
-
-# 编辑配置文件，填入实际值
 ```
 
-**config.yaml** 主要配置项：
+编辑 `config.yaml`:
+
 ```yaml
 server:
   addr: ":1280"
+  mode: "release"
 
 llm:
-  provider: "anthropic"  # openai / anthropic
-  api_key: "your-api-key"
+  provider: "anthropic"          # anthropic / openai
+  api_key: "${ANTHROPIC_API_KEY}"
   model: "claude-sonnet-4-5-20250929"
 
-# MCP 服务配置 (可选)
-mcp:
-  servers:
-    - name: "demo-tools"
-      url: "http://localhost:3001"
-      enabled: true
+database:
+  driver: "sqlite"
+  dsn: "./data/ai-ops.db"
+
+security:
+  encryption_key: "${ENCRYPTION_KEY}"  # 32 字节密钥
+  jwt_secret: "${JWT_SECRET}"
 ```
 
 ### 3. 启动服务
 
 ```bash
-# 终端 1: 启动 Go 后端
+# 后端服务
 go run cmd/server/main.go
 
-# 终端 2: 启动前端 (开发模式)
-cd web
-pnpm install
-pnpm dev
-
-# 可选: 启动示例 MCP 服务
-cd examples/mcp-server
-node server.js
+# 前端开发服务器
+cd web && npm install && npm run dev
 ```
 
 ### 4. 访问应用
 
-- 前端界面: http://localhost:5173
-- 后端 API: http://localhost:1280
-- MCP 管理: http://localhost:5173/mcp
+- **Web 界面**: http://localhost:1281
+- **API 服务**: http://localhost:1280
+- **API 文档**: http://localhost:1280/swagger
+
+---
+
+## 部署指南
+
+### Docker 部署
+
+```bash
+# 构建镜像
+docker build -t ai-ops-platform:latest .
+
+# 运行容器
+docker run -d \
+  --name ai-ops \
+  -p 1280:1280 \
+  -v $(pwd)/config.yaml:/app/config.yaml \
+  -v $(pwd)/data:/app/data \
+  -e ANTHROPIC_API_KEY=your-key \
+  ai-ops-platform:latest
+```
+
+### Docker Compose
+
+```yaml
+version: '3.8'
+services:
+  ai-ops:
+    image: ai-ops-platform:latest
+    ports:
+      - "1280:1280"
+    volumes:
+      - ./config.yaml:/app/config.yaml
+      - ./data:/app/data
+    environment:
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+    restart: unless-stopped
+```
+
+### Kubernetes
+
+```bash
+kubectl apply -f deploy/kubernetes/
+```
+
+---
+
+## 内置工具
+
+| 工具 | 描述 | 风险等级 |
+|-----|------|---------|
+| `list_hosts` | 列出所有主机 | 低 |
+| `check_cpu` | 检查 CPU 使用率 | 低 |
+| `check_memory` | 检查内存使用情况 | 低 |
+| `check_disk` | 检查磁盘使用情况 | 低 |
+| `check_process` | 查看进程列表 | 低 |
+| `query_log` | 查询系统日志 | 低 |
+| `exec_command` | 执行远程命令 | 高 |
+| `anomaly_detection` | 异常检测 | 低 |
+| `trend_analysis` | 趋势分析 | 低 |
+| `root_cause_diagnosis` | 根因诊断 | 低 |
+
+---
+
+## API 文档
+
+### 核心接口
+
+```http
+# 发送聊天消息
+POST /api/chat/send
+Content-Type: application/json
+
+{
+  "message": "检查服务器状态",
+  "host_ids": ["host-1", "host-2"],
+  "session_id": "session-xxx"
+}
+```
+
+```http
+# 获取主机列表
+GET /api/hosts
+
+# 获取工具列表
+GET /api/tools
+
+# MCP RPC 端点
+POST /api/mcp/rpc
+```
+
+### 流式响应
+
+聊天接口支持 Server-Sent Events (SSE) 流式响应：
+
+```javascript
+const eventSource = new EventSource('/api/chat/stream?session_id=xxx');
+
+eventSource.onmessage = (event) => {
+  const data = JSON.parse(event.data);
+  // data.type: 'thinking' | 'tool_call' | 'tool_result' | 'content' | 'done'
+};
+```
+
+---
+
+## 技术栈
+
+### 后端
+
+| 技术 | 用途 |
+|-----|------|
+| Go 1.21 | 主语言 |
+| Gin | Web 框架 |
+| GORM | ORM |
+| SQLite | 数据存储 |
+| golang.org/x/crypto/ssh | SSH 连接 |
+| Anthropic SDK | LLM 集成 |
+| Zap | 结构化日志 |
+
+### 前端
+
+| 技术 | 用途 |
+|-----|------|
+| Vue 3 | UI 框架 |
+| TypeScript | 类型安全 |
+| Pinia | 状态管理 |
+| Element Plus | UI 组件库 |
+| Vite | 构建工具 |
+| ECharts | 数据可视化 |
+
+---
 
 ## 项目结构
 
 ```
 ai-ops-platform/
-├── cmd/                    # Go 入口
-│   └── server/
-├── internal/               # Go 内部包
-│   ├── api/               # HTTP API
-│   ├── config/            # 配置管理
-│   ├── llm/               # LLM 客户端 (OpenAI/Anthropic)
-│   ├── mcp/               # MCP 客户端/服务端
-│   │   ├── client.go      # HTTP 协议客户端
-│   │   ├── stdio_client.go # stdio 协议客户端
-│   │   ├── server.go      # MCP 服务端
-│   │   ├── manager.go     # MCP 管理器
-│   │   └── adapter.go     # 工具适配器
-│   ├── model/             # 数据模型
-│   ├── repository/        # 数据访问
-│   ├── service/           # 业务逻辑
-│   ├── ssh/               # SSH 连接池
-│   └── tool/              # 内置工具
-├── web/                    # Vue 前端
-│   └── src/
-│       ├── components/    # Vue 组件
-│       ├── stores/        # Pinia 状态
-│       ├── views/         # 页面视图
-│       │   └── MCPSettings.vue  # MCP 管理页面
-│       └── api/           # API 调用
-├── examples/               # 示例代码
-│   └── mcp-server/        # 示例 MCP 服务
-├── docs/                   # 文档
-│   └── MCP_INTEGRATION_DESIGN.md
-├── config.yaml.example     # 配置模板
-└── docker-compose.yml      # Docker 编排
+├── cmd/server/              # 应用入口
+├── internal/
+│   ├── api/                 # HTTP API 层
+│   │   ├── handler/         # 请求处理器
+│   │   └── router/          # 路由配置
+│   ├── agent/               # AI Agent 引擎
+│   ├── llm/                 # LLM 提供商适配
+│   ├── mcp/                 # MCP 协议实现
+│   ├── model/               # 数据模型
+│   ├── repository/          # 数据访问层
+│   ├── service/             # 业务逻辑层
+│   ├── ssh/                 # SSH 连接池
+│   └── tool/                # 内置工具
+├── web/                     # Vue 前端
+│   └─�� src/
+│       ├── components/      # Vue 组件
+│       ├── views/           # 页面视图
+│       ├── stores/          # Pinia 状态
+│       ├── api/             # API 调用
+│       └── styles/          # 样式文件
+├── deploy/                  # 部署配置
+│   ├── docker/
+│   └── kubernetes/
+├── docs/                    # 文档
+└── config.yaml.example      # 配置模板
 ```
 
-## 内置工具列表
+---
 
-| 工具名 | 描述 |
-|--------|------|
-| `list_hosts` | 列出所有主机 |
-| `check_cpu` | 检查 CPU 使用率 |
-| `check_memory` | 检查内存使用情况 |
-| `check_disk` | 检查磁盘使用情况 |
-| `query_log` | 查询系统日志 |
-| `check_process` | 查看进程列表 |
-| `exec_command` | 执行远程命令 |
-| `anomaly_detection` | 异常检测 |
-| `trend_analysis` | 趋势分析 |
-| `root_cause_diagnosis` | 根因诊断 |
-| ... | 更多工具 |
+## 路线图
 
-## 使用示例
+- [x] 核心对话引擎
+- [x] 多主机管理
+- [x] MCP 协议支持
+- [x] Prometheus 集成
+- [x] Bento Grid UI
+- [ ] RBAC 权限管理
+- [ ] 工作流编排
+- [ ] 知识库 RAG
+- [ ] 多租户支持
+- [ ] Kubernetes 原生集成
 
-在聊天界面输入自然语言命令：
+---
 
-```
-# 查看系统状态
-"检查服务器的 CPU 和内存使用情况"
+## 贡献指南
 
-# 查看进程
-"显示占用内存最多的前 5 个进程"
+我们欢迎社区贡献！请阅读 [CONTRIBUTING.md](CONTRIBUTING.md) 了解如何参与。
 
-# 查看日志
-"查看最近的系统错误日志"
+```bash
+# 开发环境
+go mod download
+cd web && npm install
 
-# 执行命令
-"执行 whoami && uname -a"
+# 运行测试
+go test ./...
+cd web && npm run test
 
-# 使用 MCP 工具 (如果已配置)
-"北京天气怎么样？"
-"帮我生成 3 个 UUID"
+# 代码检查
+golangci-lint run
+cd web && npm run lint
 ```
 
-## LLM Provider 配置
+---
 
-### Anthropic Claude (推荐)
+## 许可证
 
-```yaml
-llm:
-  provider: "anthropic"
-  endpoint: ""  # 留空使用官方 API
-  model: "claude-sonnet-4-5-20250929"
-  api_key: "your-anthropic-api-key"
-```
+本项目采用 [MIT License](LICENSE) 开源许可证。
 
-### OpenAI
+---
 
-```yaml
-llm:
-  provider: "openai"
-  endpoint: "https://api.openai.com/v1"
-  model: "gpt-4"
-  api_key: "your-openai-api-key"
-```
-
-## API 端点
-
-### 核心 API
-- `POST /api/chat/send` - 发送聊天消息
-- `GET /api/hosts` - 获取主机列表
-- `GET /api/tools` - 获取工具列表
-
-### MCP API
-- `GET /api/mcp/servers` - 获取 MCP 服务器列表
-- `POST /api/mcp/servers` - 添加 MCP 服务器
-- `DELETE /api/mcp/servers/:name` - 移除 MCP 服务器
-- `GET /api/mcp/tools` - 获取所有 MCP 工具
-- `POST /api/mcp/rpc` - MCP JSON-RPC 端点 (服务端)
-
-## 技术栈
-
-**后端:**
-- Go 1.21 + Gin
-- SQLite
-- SSH (golang.org/x/crypto/ssh)
-- Anthropic SDK Go / OpenAI API
-- MCP (Model Context Protocol)
-
-**前端:**
-- Vue 3 + TypeScript
-- Pinia
-- Element Plus
-- Vite
-
-## License
-
-MIT
+<p align="center">
+  <sub>Built with ❤��� by AI-Ops Team</sub>
+</p>
