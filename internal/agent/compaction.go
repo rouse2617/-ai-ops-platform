@@ -13,6 +13,12 @@ type CompactionEngine struct {
 	keepRecent int // 保留最近 N 条消息
 }
 
+// Threshold 返回压缩阈值
+func (c *CompactionEngine) Threshold() int { return c.threshold }
+
+// KeepRecent 返回保留消息数
+func (c *CompactionEngine) KeepRecent() int { return c.keepRecent }
+
 // CompactionResult 压缩结果
 type CompactionResult struct {
 	OriginalCount  int
