@@ -6,6 +6,7 @@ import (
 	"ai-ops/internal/auth"
 	"ai-ops/internal/cache"
 	"ai-ops/internal/config"
+	"ai-ops/internal/feedback"
 	"ai-ops/internal/llm"
 	"ai-ops/internal/mcp"
 	"ai-ops/internal/monitor"
@@ -42,8 +43,9 @@ type RouterConfig struct {
 	MonitorNotifier  *monitor.AlertNotifier
 	MonitorScheduler *monitor.MonitorScheduler
 	MonitorHandler   *handler.MonitorHandler
-	PrometheusAddr   string       // Prometheus 服务地址
-	MCPManager       *mcp.Manager // MCP 管理器
+	PrometheusAddr   string            // Prometheus 服务地址
+	MCPManager       *mcp.Manager      // MCP 管理器
+	FeedbackService  *feedback.Service // 反馈学习服务
 }
 
 // NewRouter 创建路由
@@ -312,6 +314,16 @@ func NewRouter(cfg RouterConfig) *gin.Engine {
 					mcpGroup.GET("/health", mcpHandler.HealthCheck)
 					// MCP 服务端（暴露内置工具给外部客户端）
 					mcpGroup.POST("/rpc", mcpHandler.HandleJSONRPC)
+				}
+			}
+
+			// 反馈学习 API
+			if cfg.FeedbackService != nil {
+				feedbackHandler := handler.NewFeedbackHandler(cfg.FeedbackService)
+				feedbackGroup := protected.Group("/feedback")
+				{
+					feedbackGroup.POST("", feedbackHandler.SubmitFeedback)
+					feedbackGroup.GET("/:message_id", feedbackHandler.GetFeedback)
 				}
 			}
 		}

@@ -21,6 +21,7 @@ import (
 // ChatService 聊天服务
 type ChatService struct {
 	agent         *agent.Agent
+	enhancedAgent *agent.EnhancedAgent     // 增强版 Agent（带安全功能）
 	router        *agent.AgentRouter       // 智能路由器
 	skillExecutor *agent.SkillExecutor     // Skill 执行器
 	sessionRepo   repository.SessionRepository
@@ -41,6 +42,28 @@ func NewChatServiceWithConfig(llmClient llm.Client, toolRegistry *tool.Registry,
 		CacheTTL:      30 * time.Second,
 		MaxConcurrent: 10,
 	})
+
+	// 创建增强版 Agent（带安全功能）
+	enhancedAgent, err := agent.NewEnhancedAgent(llmClient, toolRegistry, sshPool, agent.EnhancedConfig{
+		Config: agent.Config{
+			MaxLoops:      10,
+			Timeout:       5 * time.Minute,
+			PromptVersion: "enhanced",
+			CacheTTL:      30 * time.Second,
+			MaxConcurrent: 10,
+		},
+		PermissionConfigPath: "configs/permissions.yaml",
+		DoomLoopWindowSize:   10,
+		DoomLoopThreshold:    3,
+		MaxSnapshots:         50,
+		CompactionThreshold:  20,
+		CompactionKeepRecent: 10,
+		PromptDir:            "./prompts",
+		ProviderID:           "anthropic",
+	})
+	if err != nil {
+		zap.L().Warn("创建增强版 Agent 失败，使用普通 Agent", zap.Error(err))
+	}
 
 	// 创建智能路由器
 	router := agent.NewAgentRouter(llmClient, toolRegistry, sshPool, agentInstance)
@@ -76,6 +99,7 @@ func NewChatServiceWithConfig(llmClient llm.Client, toolRegistry *tool.Registry,
 
 	return &ChatService{
 		agent:         agentInstance,
+		enhancedAgent: enhancedAgent,
 		router:        router,
 		skillExecutor: skillExecutor,
 		sessionRepo:   sessionRepo,

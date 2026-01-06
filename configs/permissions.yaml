@@ -1,0 +1,41 @@
+# 声明式权限配置
+# 支持通配符: * (匹配任意字符) 和 ** (匹配所有)
+
+default: ask  # 默认策略: allow/deny/ask
+
+rules:
+  # 只读操作 - 自动允许
+  - pattern: "check_*"
+    action: allow
+
+  - pattern: "get_*"
+    action: allow
+
+  - pattern: "list_*"
+    action: allow
+
+  - pattern: "show_*"
+    action: allow
+
+  # 写操作 - 需要确认
+  - pattern: "exec_command"
+    action: ask
+    message: "执行远程命令需要确认"
+
+  - pattern: "run_script"
+    action: ask
+    message: "运行脚本需要确认"
+
+  - pattern: "deploy_*"
+    action: ask
+    message: "部署操作需要确认"
+
+  # 危险操作 - 拒绝
+  - pattern: "rm_*"
+    action: deny
+
+  - pattern: "delete_*"
+    action: deny
+
+  - pattern: "drop_*"
+    action: deny
