@@ -21,6 +21,7 @@ import (
 // ChatService 聊天服务
 type ChatService struct {
 	agent       *agent.Agent
+	router      *agent.AgentRouter // 智能路由器
 	sessionRepo repository.SessionRepository
 }
 
@@ -35,8 +36,17 @@ func NewChatService(llmClient llm.Client, toolRegistry *tool.Registry, sshPool *
 		MaxConcurrent: 10,
 	})
 
+	// 创建智能路由器
+	router := agent.NewAgentRouter(llmClient, toolRegistry, sshPool, agentInstance)
+
+	// 注册专家 Agent
+	router.RegisterExpert(agent.NewTroubleshootAgent(llmClient, toolRegistry, sshPool))
+	router.RegisterExpert(agent.NewMonitorAgent(llmClient, toolRegistry, sshPool))
+	router.RegisterExpert(agent.NewDatabaseAgent(llmClient, toolRegistry, sshPool))
+
 	return &ChatService{
 		agent:       agentInstance,
+		router:      router,
 		sessionRepo: sessionRepo,
 	}
 }
@@ -177,8 +187,8 @@ func (s *ChatService) callAgentService(ctx context.Context, req ChatRequest) (*C
 		}
 	}
 
-	// 调用 Agent
-	agentResp, err := s.agent.Chat(ctx, agent.ChatRequest{
+	// 调用智能路由器（自动选择专家 Agent）
+	agentResp, err := s.router.Route(ctx, agent.ChatRequest{
 		SessionID: req.SessionID,
 		Message:   req.Message,
 		Hosts:     req.Hosts,
