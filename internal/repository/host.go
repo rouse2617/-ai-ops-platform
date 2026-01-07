@@ -54,18 +54,24 @@ func (r *hostRepository) setEncryptor(encryptor *crypto.Encryptor) {
 func (r *hostRepository) Create(host *model.Host) error {
 	// 保存前加密敏感数据
 	if err := r.encryptBeforeSave(host); err != nil {
-		return err
+		return fmt.Errorf("加密主机数据失败: %w", err)
 	}
-	return r.db.Create(host).Error
+	if err := r.db.Create(host).Error; err != nil {
+		return fmt.Errorf("创建主机失败: %w", err)
+	}
+	return nil
 }
 
 // Update 更新主机
 func (r *hostRepository) Update(host *model.Host) error {
 	// 保存前加密敏感数据
 	if err := r.encryptBeforeSave(host); err != nil {
-		return err
+		return fmt.Errorf("加密主机数据失败: %w", err)
 	}
-	return r.db.Model(&model.Host{}).Where("id = ?", host.ID).Updates(host).Error
+	if err := r.db.Model(&model.Host{}).Where("id = ?", host.ID).Updates(host).Error; err != nil {
+		return fmt.Errorf("更新主机失败: %w", err)
+	}
+	return nil
 }
 
 // Delete 删除主机
@@ -190,7 +196,7 @@ func (r *hostRepository) encryptBeforeSave(host *model.Host) error {
 		if !crypto.IsEncrypted(host.Password) {
 			encrypted, err := r.encryptor.Encrypt(host.Password)
 			if err != nil {
-				return err
+				return fmt.Errorf("加密密码失败: %w", err)
 			}
 			host.Password = encrypted
 		}
@@ -202,7 +208,7 @@ func (r *hostRepository) encryptBeforeSave(host *model.Host) error {
 		if !crypto.IsEncrypted(host.KeyContent) {
 			encrypted, err := r.encryptor.Encrypt(host.KeyContent)
 			if err != nil {
-				return err
+				return fmt.Errorf("加密私钥失败: %w", err)
 			}
 			host.KeyContent = encrypted
 		}
@@ -223,7 +229,7 @@ func (r *hostRepository) decryptAfterLoad(host *model.Host) error {
 		if crypto.IsEncrypted(host.Password) {
 			decrypted, err := r.encryptor.Decrypt(host.Password)
 			if err != nil {
-				return err
+				return fmt.Errorf("解密密码失败: %w", err)
 			}
 			host.Password = decrypted
 		}
@@ -235,7 +241,7 @@ func (r *hostRepository) decryptAfterLoad(host *model.Host) error {
 		if crypto.IsEncrypted(host.KeyContent) {
 			decrypted, err := r.encryptor.Decrypt(host.KeyContent)
 			if err != nil {
-				return err
+				return fmt.Errorf("解密私钥失败: %w", err)
 			}
 			host.KeyContent = decrypted
 		}

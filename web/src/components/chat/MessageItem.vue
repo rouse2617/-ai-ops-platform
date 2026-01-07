@@ -49,6 +49,15 @@
               :tool-call="toolCall"
             />
           </div>
+
+          <!-- 反馈按钮 (仅 AI 回复显示) -->
+          <FeedbackButtons
+            v-if="message.role === 'assistant'"
+            :message-id="message.id || ''"
+            :session-id="message.sessionId"
+            :question="previousQuestion"
+            :answer="message.content"
+          />
         </div>
       </div>
     </div>
@@ -66,9 +75,11 @@ import ToolCallCard from './ToolCallCard.vue'
 import ErrorCard from './ErrorCard.vue'
 import CollapsibleOutput from './CollapsibleOutput.vue'
 import ActionCards from './ActionCards.vue'
+import FeedbackButtons from './FeedbackButtons.vue'
 
 const props = defineProps<{
   message: Message
+  previousQuestion?: string
 }>()
 
 const emit = defineEmits<{

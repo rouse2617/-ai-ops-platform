@@ -10,6 +10,7 @@ import (
 	"ai-ops/internal/api"
 	"ai-ops/internal/cache"
 	"ai-ops/internal/config"
+	"ai-ops/internal/feedback"
 	"ai-ops/internal/llm"
 	"ai-ops/internal/mcp"
 	"ai-ops/internal/model"
@@ -256,27 +257,37 @@ func main() {
 	// cacheInstance = cache.NewMemoryCache(1000, 10*time.Minute)
 	// logger.Info("缓存初始化完成")
 
+	// 5.1 初始化反馈学习服务
+	// 如需启用 Embedding 语义搜索，取消下面注释：
+	// import "ai-ops/internal/rag/embedder"
+	// ollamaEmbedder := embedder.NewOllamaEmbedder("nomic-embed-text")
+	// feedbackService := feedback.NewService(feedbackRepo, ollamaEmbedder)
+	feedbackRepo := feedback.NewSQLiteRepository(db)
+	feedbackService := feedback.NewService(feedbackRepo, nil) // nil = 不启用 Embedding
+	logger.Info("反馈学习服务初始化完成")
+
 	// 6. 初始化 HTTP 路由
 	router := api.NewRouter(api.RouterConfig{
-		SSHPool:      sshPool,
-		ToolRegistry: toolRegistry,
-		PolicyStore:  policyStore,
-		AuditLogger:  auditLogger,
-		HostRepo:     hostRepo,
-		SessionRepo:  sessionRepo,
-		GroupRepo:    groupRepo,
-		ConfigRepo:   configRepo,
-		AnalysisRepo: analysisRepo,
-		HealthRepo:   healthRepo,
-		TrendRepo:    trendRepo,
-		ScriptRepo:   scriptRepo,
-		TaskRepo:     taskRepo,
-		LLMClient:    llmClient,
-		Cache:        cacheInstance,
-		Version:      Version,
-		Mode:         cfg.Server.Mode,
-		Config:       cfg,
-		MCPManager:   mcpManager,
+		SSHPool:         sshPool,
+		ToolRegistry:    toolRegistry,
+		PolicyStore:     policyStore,
+		AuditLogger:     auditLogger,
+		HostRepo:        hostRepo,
+		SessionRepo:     sessionRepo,
+		GroupRepo:       groupRepo,
+		ConfigRepo:      configRepo,
+		AnalysisRepo:    analysisRepo,
+		HealthRepo:      healthRepo,
+		TrendRepo:       trendRepo,
+		ScriptRepo:      scriptRepo,
+		TaskRepo:        taskRepo,
+		LLMClient:       llmClient,
+		Cache:           cacheInstance,
+		Version:         Version,
+		Mode:            cfg.Server.Mode,
+		Config:          cfg,
+		MCPManager:      mcpManager,
+		FeedbackService: feedbackService,
 	})
 
 	// 记录认证状态

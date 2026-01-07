@@ -2,6 +2,7 @@ package builtin
 
 import (
 	"ai-ops/internal/tool"
+	"fmt"
 )
 
 // RegisterAll 注册所有内置工具（使用增强版描述）
@@ -49,7 +50,7 @@ func RegisterAllEnhanced(registry *tool.Registry, getHostsFunc func(group string
 
 	for _, t := range tools {
 		if err := registry.RegisterBuiltin(t); err != nil {
-			return err
+			return fmt.Errorf("注册工具 %s 失败: %w", t.Name(), err)
 		}
 	}
 
@@ -70,7 +71,7 @@ func RegisterAllStandard(registry *tool.Registry, getHostsFunc func(group string
 
 	for _, t := range tools {
 		if err := registry.RegisterBuiltin(t); err != nil {
-			return err
+			return fmt.Errorf("注册工具 %s 失败: %w", t.Name(), err)
 		}
 	}
 
@@ -124,7 +125,7 @@ func RegisterBasicEnhanced(registry *tool.Registry) error {
 
 	for _, t := range tools {
 		if err := registry.RegisterBuiltin(t); err != nil {
-			return err
+			return fmt.Errorf("注册工具 %s 失败: %w", t.Name(), err)
 		}
 	}
 
@@ -144,7 +145,7 @@ func RegisterBasicStandard(registry *tool.Registry) error {
 
 	for _, t := range tools {
 		if err := registry.RegisterBuiltin(t); err != nil {
-			return err
+			return fmt.Errorf("注册工具 %s 失败: %w", t.Name(), err)
 		}
 	}
 

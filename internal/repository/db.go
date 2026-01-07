@@ -93,6 +93,7 @@ func InitDB(dsn string) (*gorm.DB, error) {
 		&model.HealthCheck{},
 		&model.TrendPrediction{},
 		&model.Task{},
+		&model.Script{},
 	)
 	if err != nil {
 		return nil, err
@@ -146,7 +147,7 @@ func createPerformanceIndexes(db *gorm.DB) error {
 	// 优化查询特定会话的分析历史
 	if err := db.Exec(`
 		CREATE INDEX IF NOT EXISTS idx_analysis_session_created
-		ON analysis(session_id, created_at DESC)
+		ON analyses(session_id, created_at DESC)
 	`).Error; err != nil {
 		return fmt.Errorf("创建分析索引失败: %w", err)
 	}

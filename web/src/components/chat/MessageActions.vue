@@ -177,6 +177,7 @@
 import { ref, computed } from 'vue'
 import { ElMessage } from 'element-plus'
 import type { Message } from '@/api/chat'
+import { submitFeedback } from '@/api/feedback'
 import {
   MoreFilled, CopyDocument, DocumentCopy, Promotion, RefreshRight,
   ChatLineRound, Select, CloseBold, Download, FolderOpened, Share
@@ -185,6 +186,7 @@ import {
 const props = defineProps<{
   message: Message
   isLoading?: boolean
+  previousQuestion?: string
 }>()
 
 const emit = defineEmits<{
@@ -279,19 +281,11 @@ const handleCommand = async (command: string) => {
       break
 
     case 'good':
-      feedback.value = feedback.value === 'good' ? null : 'good'
-      if (feedback.value) {
-        ElMessage.success('感谢您的反馈！')
-      }
-      emit('feedback', props.message, 'good')
+      await handleFeedbackSubmit('good')
       break
 
     case 'bad':
-      feedback.value = feedback.value === 'bad' ? null : 'bad'
-      if (feedback.value) {
-        ElMessage.warning('感谢您的反馈，我们会改进！')
-      }
-      emit('feedback', props.message, 'bad')
+      await handleFeedbackSubmit('bad')
       break
 
     case 'export':
@@ -312,6 +306,33 @@ const copyMessage = async () => {
     ElMessage.success('已复制到剪贴板')
   } catch {
     ElMessage.error('复制失败')
+  }
+}
+
+// 提交反馈到后端
+const handleFeedbackSubmit = async (type: 'good' | 'bad') => {
+  const newRating = feedback.value === type ? null : type
+  const ratingValue = type === 'good' ? 1 : -1
+
+  try {
+    if (newRating) {
+      await submitFeedback({
+        message_id: props.message.id || `msg_${Date.now()}`,
+        session_id: props.message.sessionId || '',
+        question: props.previousQuestion || '',
+        answer: props.message.content || '',
+        rating: ratingValue
+      })
+    }
+    feedback.value = newRating
+    if (newRating === 'good') {
+      ElMessage.success('感谢您的反馈！')
+    } else if (newRating === 'bad') {
+      ElMessage.warning('感谢您的反馈，我们会改进！')
+    }
+    emit('feedback', props.message, type)
+  } catch {
+    ElMessage.error('反馈提交失败')
   }
 }
 

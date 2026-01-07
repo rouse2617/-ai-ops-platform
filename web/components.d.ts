@@ -89,6 +89,7 @@ declare module 'vue' {
     ErrorAlert: typeof import('./src/components/common/ErrorAlert.vue')['default']
     ErrorBoundary: typeof import('./src/components/common/ErrorBoundary.vue')['default']
     ErrorCard: typeof import('./src/components/chat/ErrorCard.vue')['default']
+    FeedbackButtons: typeof import('./src/components/chat/FeedbackButtons.vue')['default']
     FilesystemPanel: typeof import('./src/components/console/storage/FilesystemPanel.vue')['default']
     FollowUpQuestions: typeof import('./src/components/chat/FollowUpQuestions.vue')['default']
     GlobalTaskProgress: typeof import('./src/components/common/GlobalTaskProgress.vue')['default']

@@ -21,7 +21,7 @@ func TestQueryLogTool(t *testing.T) {
 		t.Error("Parameters 不应为空")
 	}
 
-	// 测试参数验证 - 缺少 host 和 hosts
+	// 测试参数验证 - 缺少 host
 	result, _ := qt.Execute(nil, map[string]interface{}{
 		"log_type": "nginx",
 	})
