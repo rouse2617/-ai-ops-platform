@@ -25,6 +25,7 @@
       </div>
       <div class="header-right">
         <el-button size="small" @click="handleSelectAll">全选</el-button>
+        <el-button size="small" type="success" @click="handleSelectOnline">只选在线</el-button>
         <el-button size="small" @click="handleSelectNone">清空</el-button>
         <el-button size="small" @click="handleSelectInverse">反选</el-button>
         <span class="selected-count">已选择: {{ selectedHosts.length }}</span>
@@ -183,6 +184,25 @@ const handleSelectNone = () => {
   tableRef.value?.clearSelection()
   consoleStore.clearSelection()
   nextTick(() => {
+    isUpdatingFromStore.value = false
+  })
+}
+
+// 只选在线
+const handleSelectOnline = () => {
+  isUpdatingFromStore.value = true
+  const onlineHosts = filteredHosts.value
+    .filter(h => h.status === 'online')
+    .map(h => h.id || h.name)
+  consoleStore.selectHosts(onlineHosts)
+
+  nextTick(() => {
+    tableRef.value?.clearSelection()
+    filteredHosts.value.forEach((host) => {
+      if (onlineHosts.includes(host.id || host.name)) {
+        tableRef.value?.toggleRowSelection(host, true)
+      }
+    })
     isUpdatingFromStore.value = false
   })
 }

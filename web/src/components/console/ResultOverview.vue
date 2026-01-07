@@ -2,15 +2,15 @@
   <div class="result-overview">
     <!-- 状态统计仪表盘 -->
     <div class="status-dashboard">
-      <div class="stat-item success">
+      <div class="stat-item success" @click="statusFilter = 'success'" :class="{ active: statusFilter === 'success' }">
         <div class="stat-value">{{ successCount }}</div>
         <div class="stat-label">成功</div>
       </div>
-      <div class="stat-item error">
+      <div class="stat-item error" @click="statusFilter = 'error'" :class="{ active: statusFilter === 'error' }">
         <div class="stat-value">{{ errorCount }}</div>
         <div class="stat-label">失败</div>
       </div>
-      <div class="stat-item total">
+      <div class="stat-item total" @click="statusFilter = ''" :class="{ active: statusFilter === '' }">
         <div class="stat-value">{{ results.length }}</div>
         <div class="stat-label">总计</div>
       </div>
@@ -19,91 +19,82 @@
         <div class="stat-label">平均耗时</div>
       </div>
     </div>
-    
-    <div class="overview-header">
-      <div class="header-left">
-        <el-select
-          v-model="statusFilter"
-          placeholder="状态筛选"
-          clearable
-          style="width: 120px; margin-right: 10px"
-        >
-          <el-option label="全部" value="" />
-          <el-option label="成功" value="success" />
-          <el-option label="失败" value="error" />
-        </el-select>
-        <el-button
-          v-if="errorCount > 0"
-          type="danger"
-          size="small"
-          @click="handleRetryAllFailed"
-          style="margin-left: 10px"
-        >
-          重试所有失败项 ({{ errorCount }})
-        </el-button>
-        <span class="result-count">
-          共 {{ filteredResults.length }} 条结果
-        </span>
+
+    <!-- 双栏布局 -->
+    <div class="split-view">
+      <!-- 左侧：主机列表 -->
+      <div class="host-list-panel">
+        <div class="panel-header">
+          <el-button
+            v-if="errorCount > 0"
+            type="danger"
+            size="small"
+            @click="handleRetryAllFailed"
+          >
+            重试失败 ({{ errorCount }})
+          </el-button>
+          <span class="result-count">{{ filteredResults.length }} 条</span>
+        </div>
+        <div class="host-list">
+          <div
+            v-for="(result, index) in filteredResults"
+            :key="index"
+            class="host-item"
+            :class="{ selected: selectedResult === result, error: result.status === 'error' }"
+            @click="selectResult(result)"
+          >
+            <span class="status-dot" :class="result.status"></span>
+            <span class="host-name">{{ result.host }}</span>
+            <span class="elapsed-time">{{ result.elapsed }}</span>
+          </div>
+        </div>
       </div>
-      <div class="header-right">
-        <el-button size="small" @click="handleCopySelected" :disabled="selectedRows.length === 0">
-          复制选中
-        </el-button>
-        <el-button size="small" @click="handleExportSelected" :disabled="selectedRows.length === 0">
-          导出选中
-        </el-button>
+
+      <!-- 右侧：详情面板 -->
+      <div class="detail-panel">
+        <template v-if="selectedResult">
+          <div class="detail-header">
+            <el-tag :type="selectedResult.status === 'success' ? 'success' : 'danger'" size="large">
+              {{ selectedResult.host }}
+            </el-tag>
+            <div class="detail-actions">
+              <el-button size="small" @click="handleCopy(selectedResult)">复制</el-button>
+              <el-button size="small" @click="handleExport(selectedResult)">导出</el-button>
+              <el-button v-if="selectedResult.status === 'error'" type="danger" size="small" @click="handleRetry(selectedResult)">重试</el-button>
+            </div>
+          </div>
+          <div class="detail-content">
+            <!-- 错误信息 -->
+            <div v-if="selectedResult.error" class="error-block">
+              <div class="error-label">错误信息</div>
+              <pre class="error-text">{{ selectedResult.error }}</pre>
+            </div>
+            <!-- 执行结果 -->
+            <div v-if="selectedResult.result" class="result-block">
+              <pre class="result-text">{{ formatResult(selectedResult.result) }}</pre>
+            </div>
+          </div>
+        </template>
+        <div v-else class="empty-detail">
+          <el-icon :size="48"><Document /></el-icon>
+          <p>选择左侧主机查看详情</p>
+        </div>
       </div>
     </div>
-
-    <el-table
-      :data="filteredResults"
-      stripe
-      @selection-change="handleSelectionChange"
-      @row-click="handleRowClick"
-    >
-      <el-table-column type="selection" width="55" />
-      <el-table-column prop="host" label="主机" min-width="180">
-        <template #default="{ row }">
-          <el-tag :type="getHostTagType(row.host)" effect="dark" size="default">
-            {{ row.host }}
-          </el-tag>
-        </template>
-      </el-table-column>
-      <el-table-column prop="status" label="状态" width="100">
-        <template #default="{ row }">
-          <el-tag :type="row.status === 'success' ? 'success' : 'danger'" size="small">
-            {{ row.status === 'success' ? '成功' : '失败' }}
-          </el-tag>
-        </template>
-      </el-table-column>
-      <el-table-column prop="elapsed" label="耗时" width="100" />
-      <el-table-column prop="error" label="错误信息" min-width="200" show-overflow-tooltip>
-        <template #default="{ row }">
-          <span v-if="row.error" style="color: var(--el-color-danger)">{{ row.error }}</span>
-          <span v-else style="color: var(--el-color-success)">-</span>
-        </template>
-      </el-table-column>
-      <el-table-column label="操作" width="100" fixed="right">
-        <template #default="{ row }">
-          <el-button type="primary" link size="small" @click.stop="handleViewDetail(row)">
-            查看详情
-          </el-button>
-        </template>
-      </el-table-column>
-    </el-table>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue'
 import { ElMessage } from 'element-plus'
+import { Document } from '@element-plus/icons-vue'
 import type { BatchExecuteResult } from '@/api/operations'
 import { useConsoleStore } from '@/stores/console'
 
 const consoleStore = useConsoleStore()
 
 const statusFilter = ref('')
-const selectedRows = ref<BatchExecuteResult[]>([])
+const selectedResult = ref<BatchExecuteResult | null>(null)
 
 const results = computed(() => consoleStore.executionResults)
 
@@ -114,16 +105,17 @@ onMounted(() => {
   }
 })
 
-// 监听结果变化，如果有新失败项，自动切换到失败筛选
+// 监听结果变化
 watch(() => results.value, (newResults) => {
-  if (newResults.some(r => r.status === 'error') && !statusFilter.value) {
-    statusFilter.value = 'error'
+  if (newResults.length > 0 && !selectedResult.value) {
+    // 自动选中第一个失败项或第一项
+    const firstError = newResults.find(r => r.status === 'error')
+    selectedResult.value = firstError || newResults[0]
   }
-}, { deep: true })
+}, { deep: true, immediate: true })
 
 const filteredResults = computed(() => {
   if (!statusFilter.value) {
-    // 失败项置顶
     const sorted = [...results.value]
     return sorted.sort((a, b) => {
       if (a.status === 'error' && b.status !== 'error') return -1
@@ -134,149 +126,79 @@ const filteredResults = computed(() => {
   return results.value.filter(r => r.status === statusFilter.value)
 })
 
-const successCount = computed(() => {
-  return results.value.filter(r => r.status === 'success').length
-})
+const successCount = computed(() => results.value.filter(r => r.status === 'success').length)
+const errorCount = computed(() => results.value.filter(r => r.status === 'error').length)
 
-const errorCount = computed(() => {
-  return results.value.filter(r => r.status === 'error').length
-})
-
-// 计算平均耗时
 const averageElapsed = computed(() => {
   if (results.value.length === 0) return '0ms'
-  const total = results.value.reduce((sum, r) => {
-    const elapsed = parseElapsed(r.elapsed)
-    return sum + elapsed
-  }, 0)
-  const avg = total / results.value.length
-  return formatElapsed(avg)
+  const total = results.value.reduce((sum, r) => sum + parseElapsed(r.elapsed), 0)
+  return formatElapsed(total / results.value.length)
 })
 
-// 解析耗时字符串为毫秒数
 function parseElapsed(elapsed: string): number {
   if (!elapsed) return 0
   const match = elapsed.match(/(\d+\.?\d*)(ms|s|m)/)
   if (!match) return 0
   const value = parseFloat(match[1])
   const unit = match[2]
-  switch (unit) {
-    case 'ms':
-      return value
-    case 's':
-      return value * 1000
-    case 'm':
-      return value * 60 * 1000
-    default:
-      return 0
-  }
+  return unit === 'ms' ? value : unit === 's' ? value * 1000 : value * 60000
 }
 
-// 格式化毫秒数为字符串
 function formatElapsed(ms: number): string {
-  if (ms < 1000) {
-    return `${Math.round(ms)}ms`
-  } else if (ms < 60000) {
-    return `${(ms / 1000).toFixed(2)}s`
-  } else {
-    return `${(ms / 60000).toFixed(2)}m`
-  }
+  if (ms < 1000) return `${Math.round(ms)}ms`
+  if (ms < 60000) return `${(ms / 1000).toFixed(2)}s`
+  return `${(ms / 60000).toFixed(2)}m`
 }
 
-// 重试所有失败项
+const selectResult = (result: BatchExecuteResult) => {
+  selectedResult.value = result
+}
+
+const formatResult = (result: any): string => {
+  if (typeof result === 'string') return result
+  if (result.log) return result.log
+  if (result.output) return result.output
+  if (result.cpu) return result.cpu
+  return JSON.stringify(result, null, 2)
+}
+
 const handleRetryAllFailed = async () => {
-  const failedResults = results.value.filter(r => r.status === 'error')
-  if (failedResults.length === 0) {
-    ElMessage.warning('没有失败项需要重试')
-    return
-  }
-  
-  if (!consoleStore.currentOperation) {
-    ElMessage.warning('无法重试：未知操作类型')
-    return
-  }
-  
-  const failedHosts = failedResults.map(r => r.host)
-  
+  const failedHosts = results.value.filter(r => r.status === 'error').map(r => r.host)
+  if (failedHosts.length === 0 || !consoleStore.currentOperation) return
+
   try {
-    await consoleStore.executeOperation(
-      consoleStore.currentOperation,
-      failedHosts,
-      consoleStore.operationParams
-    )
-    ElMessage.success(`成功重试 ${failedHosts.length} 个失败的主机`)
-    // 重置筛选，显示所有结果
+    await consoleStore.executeOperation(consoleStore.currentOperation, failedHosts, consoleStore.operationParams)
+    ElMessage.success(`重试 ${failedHosts.length} 个主机`)
     statusFilter.value = ''
   } catch (error: any) {
     ElMessage.error(error.message || '重试失败')
   }
 }
 
-const handleSelectionChange = (rows: BatchExecuteResult[]) => {
-  selectedRows.value = rows
+const handleCopy = (result: BatchExecuteResult) => {
+  const text = result.error || formatResult(result.result)
+  navigator.clipboard.writeText(text).then(() => ElMessage.success('已复制'))
 }
 
-const handleRowClick = (row: BatchExecuteResult) => {
-  // 可以触发查看详情
-  emit('view-detail', row)
-}
-
-const handleViewDetail = (row: BatchExecuteResult) => {
-  emit('view-detail', row)
-}
-
-const handleCopySelected = () => {
-  if (selectedRows.value.length === 0) {
-    ElMessage.warning('请先选择要复制的结果')
-    return
-  }
-
-  const text = selectedRows.value
-    .map(r => `${r.host}\t${r.status}\t${r.elapsed}\t${r.error || '-'}`)
-    .join('\n')
-
-  navigator.clipboard.writeText(text).then(() => {
-    ElMessage.success('已复制到剪贴板')
-  }).catch(() => {
-    ElMessage.error('复制失败')
-  })
-}
-
-const handleExportSelected = () => {
-  if (selectedRows.value.length === 0) {
-    ElMessage.warning('请先选择要导出的结果')
-    return
-  }
-
-  const data = selectedRows.value.map(r => ({
-    主机: r.host,
-    状态: r.status === 'success' ? '成功' : '失败',
-    耗时: r.elapsed,
-    错误信息: r.error || '-'
-  }))
-
-  const json = JSON.stringify(data, null, 2)
-  const blob = new Blob([json], { type: 'application/json' })
+const handleExport = (result: BatchExecuteResult) => {
+  const content = result.error || formatResult(result.result)
+  const blob = new Blob([content], { type: 'text/plain' })
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
   a.href = url
-  a.download = `批量操作结果_${new Date().toISOString().slice(0, 10)}.json`
+  a.download = `${result.host}_result.txt`
   a.click()
   URL.revokeObjectURL(url)
-
-  ElMessage.success('导出成功')
 }
 
-// 为不同主机分配不同颜色
-const hostColorMap = new Map<string, string>()
-const tagTypes = ['', 'success', 'warning', 'danger', 'info'] as const
-
-function getHostTagType(host: string): typeof tagTypes[number] {
-  if (!hostColorMap.has(host)) {
-    const index = hostColorMap.size % tagTypes.length
-    hostColorMap.set(host, tagTypes[index])
+const handleRetry = async (result: BatchExecuteResult) => {
+  if (!consoleStore.currentOperation) return
+  try {
+    await consoleStore.executeOperation(consoleStore.currentOperation, [result.host], consoleStore.operationParams)
+    ElMessage.success('重试成功')
+  } catch (error: any) {
+    ElMessage.error(error.message || '重试失败')
   }
-  return hostColorMap.get(host) as typeof tagTypes[number]
 }
 
 const emit = defineEmits<{
@@ -356,23 +278,194 @@ const emit = defineEmits<{
   color: var(--el-text-color-secondary);
 }
 
-.overview-header {
+/* 双栏布局 */
+.split-view {
+  flex: 1;
+  display: flex;
+  gap: 1px;
+  background: var(--el-border-color);
+  overflow: hidden;
+}
+
+.host-list-panel {
+  width: 280px;
+  min-width: 200px;
+  background: #fff;
+  display: flex;
+  flex-direction: column;
+}
+
+.panel-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 12px;
+  padding: 8px 12px;
   border-bottom: 1px solid var(--el-border-color);
-}
-
-.header-left {
-  display: flex;
-  align-items: center;
+  background: #fafafa;
 }
 
 .result-count {
   color: var(--el-text-color-secondary);
+  font-size: 12px;
+}
+
+.host-list {
+  flex: 1;
+  overflow-y: auto;
+}
+
+.host-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  cursor: pointer;
+  border-bottom: 1px solid var(--el-border-color-lighter);
+  transition: background 0.2s;
+}
+
+.host-item:hover {
+  background: #f5f7fa;
+}
+
+.host-item.selected {
+  background: #ecf5ff;
+  border-left: 3px solid #409eff;
+}
+
+.host-item.error {
+  background: #fef0f0;
+}
+
+.host-item.error.selected {
+  background: #fde2e2;
+  border-left-color: #f56c6c;
+}
+
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.status-dot.success {
+  background: #67c23a;
+}
+
+.status-dot.error {
+  background: #f56c6c;
+}
+
+.host-name {
+  flex: 1;
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.elapsed-time {
+  font-size: 11px;
+  color: var(--el-text-color-secondary);
+}
+
+/* 详情面板 */
+.detail-panel {
+  flex: 1;
+  background: #fff;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.detail-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--el-border-color);
+  background: #fafafa;
+}
+
+.detail-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.detail-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px;
+}
+
+.error-block {
+  margin-bottom: 16px;
+}
+
+.error-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: #f56c6c;
+  margin-bottom: 8px;
+}
+
+.error-text {
+  background: #2d2d2d;
+  color: #ff6b6b;
+  padding: 12px 16px;
+  border-radius: 6px;
+  font-family: 'Consolas', 'Monaco', monospace;
+  font-size: 13px;
+  line-height: 1.5;
+  overflow-x: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+  margin: 0;
+}
+
+.result-block {
+  flex: 1;
+}
+
+.result-text {
+  background: #1e1e1e;
+  color: #d4d4d4;
+  padding: 12px 16px;
+  border-radius: 6px;
+  font-family: 'Consolas', 'Monaco', monospace;
+  font-size: 13px;
+  line-height: 1.5;
+  overflow-x: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+  margin: 0;
+  min-height: 200px;
+}
+
+.empty-detail {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  color: var(--el-text-color-secondary);
+}
+
+.empty-detail p {
+  margin-top: 12px;
   font-size: 14px;
-  margin-left: 10px;
+}
+
+/* 可点击的统计卡片 */
+.stat-item.success,
+.stat-item.error,
+.stat-item.total {
+  cursor: pointer;
+}
+
+.stat-item.active {
+  box-shadow: 0 0 0 2px var(--el-color-primary);
 }
 </style>
 

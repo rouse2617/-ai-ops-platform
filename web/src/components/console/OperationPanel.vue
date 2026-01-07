@@ -41,7 +41,7 @@
             <el-input
               v-model="commandForm.command"
               type="textarea"
-              :rows="3"
+              :autosize="{ minRows: 2, maxRows: 6 }"
               placeholder="请输入要执行的命令"
               :class="{ 'dangerous-command': isDangerous, 'critical-command': isCritical }"
             />
