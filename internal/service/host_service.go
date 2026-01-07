@@ -12,6 +12,7 @@ import (
 	"ai-ops/internal/model"
 	"ai-ops/internal/repository"
 	"ai-ops/internal/ssh"
+	"ai-ops/pkg/logger"
 
 	"github.com/google/uuid"
 	"go.uber.org/zap"
@@ -60,6 +61,14 @@ type HostInfo struct {
 	Description string
 }
 
+// HostFilter 主机过滤条件（Service 层定义）
+type HostFilter struct {
+	Group   string
+	Keyword string
+	Status  string
+	Tags    []string
+}
+
 // HostResponse 主机响应
 type HostResponse struct {
 	ID          string   `json:"id"`
@@ -78,8 +87,16 @@ type HostResponse struct {
 }
 
 // ListHosts 获取主机列表（带缓存）
-func (s *HostService) ListHosts(filter repository.HostFilter) ([]*HostResponse, error) {
+func (s *HostService) ListHosts(filter HostFilter) ([]*HostResponse, error) {
 	ctx := context.Background()
+
+	// 转换为 Repository 层的 Filter
+	repoFilter := repository.HostFilter{
+		Group:   filter.Group,
+		Keyword: filter.Keyword,
+		Status:  filter.Status,
+		Tags:    filter.Tags,
+	}
 
 	// 尝试从缓存获取
 	if s.cache != nil && s.keyGen != nil {
@@ -92,7 +109,7 @@ func (s *HostService) ListHosts(filter repository.HostFilter) ([]*HostResponse, 
 	}
 
 	// 从数据库获取
-	dbHosts, err := s.hostRepo.List(filter)
+	dbHosts, err := s.hostRepo.List(repoFilter)
 	if err != nil {
 		return nil, fmt.Errorf("获取主机列表失败: %w", err)
 	}
@@ -105,7 +122,7 @@ func (s *HostService) ListHosts(filter repository.HostFilter) ([]*HostResponse, 
 		cacheKey := s.keyGen.Build("list", filter.Group, filter.Keyword, filter.Status)
 		if err := s.cache.Set(ctx, cacheKey, dbHosts, 5*time.Minute); err != nil {
 			// 记录日志但不影响主流程
-			fmt.Printf("Warning: failed to set cache: %v\n", err)
+			logger.Warn("缓存设置失败", zap.Error(err))
 		}
 	}
 

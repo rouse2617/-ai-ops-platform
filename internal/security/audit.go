@@ -3,6 +3,7 @@ package security
 import (
 	"bufio"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -39,16 +40,18 @@ func (l *AuditLogger) Append(e CommandAuditEvent) error {
 	_ = os.MkdirAll(filepath.Dir(l.path), 0o755)
 	f, err := os.OpenFile(l.path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
 	if err != nil {
-		return err
+		return fmt.Errorf("打开审计日志文件失败: %w", err)
 	}
 	defer f.Close()
 
 	b, err := json.Marshal(e)
 	if err != nil {
-		return err
+		return fmt.Errorf("序列化审计事件失败: %w", err)
 	}
-	_, err = f.Write(append(b, '\n'))
-	return err
+	if _, err = f.Write(append(b, '\n')); err != nil {
+		return fmt.Errorf("写入审计日志失败: %w", err)
+	}
+	return nil
 }
 
 func (l *AuditLogger) ReadLastN(n int) ([]CommandAuditEvent, error) {

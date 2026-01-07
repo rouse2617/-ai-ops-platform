@@ -1,7 +1,6 @@
 package handler
 
 import (
-	"ai-ops/internal/repository"
 	"ai-ops/internal/service"
 
 	"github.com/gin-gonic/gin"
@@ -43,8 +42,8 @@ func (h *HostHandler) ListHosts(c *gin.Context) {
 	group := c.Query("group")
 	keyword := c.Query("keyword")
 
-	// 调用 Service 层
-	hosts, err := h.hostService.ListHosts(repository.HostFilter{
+	// 调用 Service 层（使用 Service 层定义的 Filter）
+	hosts, err := h.hostService.ListHosts(service.HostFilter{
 		Group:   group,
 		Keyword: keyword,
 	})
@@ -62,7 +61,7 @@ func (h *HostHandler) ListHosts(c *gin.Context) {
 // GetAllHosts 获取所有主机（不分页，用于选择器）
 // GET /api/hosts/all
 func (h *HostHandler) GetAllHosts(c *gin.Context) {
-	hosts, err := h.hostService.ListHosts(repository.HostFilter{})
+	hosts, err := h.hostService.ListHosts(service.HostFilter{})
 	if err != nil {
 		InternalError(c, "获取主机列表失败: "+err.Error())
 		return

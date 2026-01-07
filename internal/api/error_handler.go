@@ -1,7 +1,6 @@
 package api
 
 import (
-	"log"
 	"runtime/debug"
 
 	"ai-ops/internal/api/handler"
@@ -9,6 +8,7 @@ import (
 	"ai-ops/pkg/logger"
 
 	"github.com/gin-gonic/gin"
+	"go.uber.org/zap"
 )
 
 // ErrorHandlerMiddleware 全局错误处理中间件
@@ -18,7 +18,9 @@ func ErrorHandlerMiddleware() gin.HandlerFunc {
 		defer func() {
 			if r := recover(); r != nil {
 				// 记录 panic 堆栈信息
-				log.Printf("PANIC: %v\n%s", r, debug.Stack())
+				logger.Error("PANIC recovered",
+					zap.Any("panic", r),
+					zap.String("stack", string(debug.Stack())))
 
 				// 返回内部错误响应
 				handler.HandleError(c, errors.ErrInternalError.WithDetail("服务器内部错误"))
@@ -48,7 +50,9 @@ func ErrorHandlerMiddleware() gin.HandlerFunc {
 // HandlePanic 处理 panic 的辅助函数
 func HandlePanic(c *gin.Context) {
 	if r := recover(); r != nil {
-		log.Printf("PANIC: %v\n%s", r, debug.Stack())
+		logger.Error("PANIC recovered",
+			zap.Any("panic", r),
+			zap.String("stack", string(debug.Stack())))
 		handler.HandleError(c, errors.ErrInternalError.WithDetail("服务器内部错误"))
 		c.Abort()
 	}

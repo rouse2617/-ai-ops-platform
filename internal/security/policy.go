@@ -3,6 +3,7 @@ package security
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -46,7 +47,7 @@ func (s *PolicyStore) Set(p CommandPolicy) error {
 	defer s.mu.Unlock()
 	s.policy = p
 	if err := s.compileLocked(); err != nil {
-		return err
+		return fmt.Errorf("编译策略规则失败: %w", err)
 	}
 	return s.saveLocked()
 }
@@ -61,12 +62,12 @@ func (s *PolicyStore) Load() error {
 			_ = os.MkdirAll(filepath.Dir(s.path), 0o755)
 			return s.saveLocked()
 		}
-		return err
+		return fmt.Errorf("读取策略文件失败: %w", err)
 	}
 
 	var p CommandPolicy
 	if err := json.Unmarshal(b, &p); err != nil {
-		return err
+		return fmt.Errorf("解析策略文件失败: %w", err)
 	}
 	s.policy = p
 	return s.compileLocked()
@@ -80,7 +81,7 @@ func (s *PolicyStore) compileLocked() error {
 		}
 		re, err := regexp.Compile(r.Pattern)
 		if err != nil {
-			return err
+			return fmt.Errorf("编译正则表达式 %s 失败: %w", r.Pattern, err)
 		}
 		s.compiled = append(s.compiled, re)
 	}
@@ -91,9 +92,12 @@ func (s *PolicyStore) saveLocked() error {
 	_ = os.MkdirAll(filepath.Dir(s.path), 0o755)
 	b, err := json.MarshalIndent(s.policy, "", "  ")
 	if err != nil {
-		return err
+		return fmt.Errorf("序列化策略失败: %w", err)
 	}
-	return os.WriteFile(s.path, b, 0o644)
+	if err := os.WriteFile(s.path, b, 0o644); err != nil {
+		return fmt.Errorf("保存策略文件失败: %w", err)
+	}
+	return nil
 }
 
 func looksUnsafeShell(cmd string) bool {
